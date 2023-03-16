@@ -2,10 +2,12 @@ KMS is a organization tool used to log Japanese Kanji/Vocab which will hopefully
 
 ## Initial Plan
 - Create Kanji entries 
-  - On'yomi 
-  - Kun'yomi 
-  - Description 
+  - With meaning
+  - With on'yomi 
+  - With kun'yomi 
+  - With description 
 - Create Vocab entries
+  - With meaning
   - With reading
   - With description
   - With exception flag
