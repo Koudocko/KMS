@@ -2,20 +2,27 @@ use std::{
     net::{TcpListener, TcpStream},
     io::{prelude::*, BufReader},
     sync::{Mutex, Arc},
-    thread, error::Error,
+    thread, error::Error, fs::{OpenOptions, File},
 };
 use serde_json::{Value, json};
 use serde::{Serialize, Deserialize};
 use lib::*;
 use lib::models::{NewUser, User};
+use chrono::{DateTime, Local};
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
 
-fn handle_connection(stream: &mut (TcpStream, Option<User>))-> Result<(), Box<dyn Error>> {
+fn log_activity(file: &Arc<Mutex<File>>, msg: String){
+    let time = Local::now().format("[%Y-%m-%d %H:%M:%S]");
+    file.lock().unwrap().write_all(format!("{time} - {msg}\n\n").as_bytes()).unwrap();
+    println!("{time} - {msg}\n");
+}
+
+fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<File>>)-> Result<(), Box<dyn Error>> {
     stream.0.set_nonblocking(false)?;
     let request = read_stream(&mut stream.0)?;
-    println!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), request.header, request.payload);
+    log_activity(file, format!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), request.header, request.payload));
 
     let mut header = String::from("GOOD");
     let payload = match request.header.as_str(){
@@ -69,21 +76,21 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>))-> Result<(), Box<dy
     };
 
     let outgoing = Package{ header, payload };
-    println!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), outgoing.header, outgoing.payload);
+    log_activity(&file, format!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), outgoing.header, outgoing.payload));
     write_stream(&mut stream.0, outgoing)?;
 
     Ok(())
 }
 
-fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>){
+fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>, file: Arc<Mutex<File>>){
     loop{
         streams.lock().unwrap().retain_mut(|stream|{
             let mut buf = [0u8];
             stream.0.set_nonblocking(true).unwrap();
             if let Ok(peeked) = stream.0.peek(&mut buf){
                 if peeked != 0{
-                    if handle_connection(stream).is_err(){
-                        println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?}", stream.0.peer_addr().unwrap().to_string(), stream.1.is_some());
+                    if handle_connection(stream, &file).is_err(){
+                        println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", stream.0.peer_addr().unwrap().to_string(), stream.1.is_some());
                         stream.0.shutdown(std::net::Shutdown::Both).unwrap();
                         return false;
                     }
@@ -96,21 +103,28 @@ fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>){
 }
 
 fn main() {
+    let file = Arc::new(Mutex::new(OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/var/log/kms.log")
+        .unwrap()));
+
     let listener = TcpListener::bind(SOCKET).unwrap();
     let streams = Arc::new(Mutex::new(Vec::new()));
 
-    let handle = Arc::clone(&streams);
+    let stream_handle = Arc::clone(&streams);
+    let file_handle = Arc::clone(&file);
     thread::spawn(||{
-        check_connections(handle);
+        check_connections(stream_handle, file_handle);
     });
 
     for stream in listener.incoming(){
         if let Ok(stream) = stream{
-            println!("CONNECTION ESTABLISHED || With Address: {}", stream.peer_addr().unwrap().to_string());
+            log_activity(&file, format!("CONNECTION ESTABLISHED || With Address: {};", stream.peer_addr().unwrap().to_string()));
             streams.lock().unwrap().push((stream, None));
         }
         else{
-            println!("Failed to establish connection!");
+            println!("FAILED TO ESTABLISH CONNECTION WITH CLIENT!");
         }
     }
 }
