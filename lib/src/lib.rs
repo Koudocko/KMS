@@ -45,10 +45,8 @@ pub fn read_stream(stream: &mut TcpStream)-> Result<Package, std::io::Error>{
     let mut buf = String::new();
 
     BufReader::new(stream)
-        .read_line(&mut buf)
-        .unwrap();
+        .read_line(&mut buf)?;
 
-    println!("BUF: {buf}");
     Ok(serde_json::from_str(&buf)?)
 }
 

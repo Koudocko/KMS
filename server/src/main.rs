@@ -9,14 +9,13 @@ use serde::{Serialize, Deserialize};
 use lib::*;
 use lib::models::{NewUser, User};
 
-
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
 
 fn handle_connection(stream: &mut (TcpStream, Option<User>))-> Result<(), Box<dyn Error>> {
-    stream.0.set_nonblocking(false).unwrap();
+    stream.0.set_nonblocking(false)?;
     let request = read_stream(&mut stream.0)?;
-    println!("INCOMING REQUEST\nVerified: {:?}\nHeader: {}\nPayload: {:?}", stream.1.is_some(), request.header, request.payload);
+    println!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), request.header, request.payload);
 
     let mut header = String::from("GOOD");
     let payload = match request.header.as_str(){
@@ -64,16 +63,14 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>))-> Result<(), Box<dy
             }
         }
         _ =>{
-            String::new()
+            header = String::from("BAD");
+            json!({ "error": "Invalid request header!" }).to_string()
         }
     };
 
-    write_stream(&mut stream.0, 
-        Package{ 
-            header,
-            payload, 
-        }
-    ).unwrap();
+    let outgoing = Package{ header, payload };
+    println!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), outgoing.header, outgoing.payload);
+    write_stream(&mut stream.0, outgoing)?;
 
     Ok(())
 }
@@ -86,7 +83,7 @@ fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>){
             if let Ok(peeked) = stream.0.peek(&mut buf){
                 if peeked != 0{
                     if handle_connection(stream).is_err(){
-                        println!("SHUTTING Down Stream");
+                        println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?}", stream.0.peer_addr().unwrap().to_string(), stream.1.is_some());
                         stream.0.shutdown(std::net::Shutdown::Both).unwrap();
                         return false;
                     }
@@ -109,9 +106,8 @@ fn main() {
 
     for stream in listener.incoming(){
         if let Ok(stream) = stream{
-            println!("Connection established!");
+            println!("CONNECTION ESTABLISHED || With Address: {}", stream.peer_addr().unwrap().to_string());
             streams.lock().unwrap().push((stream, None));
-            println!("Connection added!");
         }
         else{
             println!("Failed to establish connection!");
