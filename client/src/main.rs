@@ -4,7 +4,7 @@ use std::{
     sync::Mutex,
 };
 use lib::*;
-use lib::models::NewUser;
+use lib::models::{NewUser, NewKanji};
 use ring::rand::SecureRandom;
 use ring::{digest, pbkdf2, rand};
 use std::num::NonZeroU32;
@@ -22,6 +22,32 @@ const SOCKET: &str = "127.0.0.1:7878";
 static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
+
+fn add_kanji(symbol: String, meaning: String, onyomi: Vec<Option<String>>, kunyomi: Vec<Option<String>>, description: Option<String>){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("CREATE_KANJI"), 
+            payload: serde_json::to_string(&NewKanji{
+                symbol,
+                meaning,
+                onyomi,
+                kunyomi,
+                description,
+                vocab_refs: Vec::new(),
+                user_id: 0,
+            }).unwrap()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("ADDED KANJI");
+    }
+    else{
+        println!("FAILLED ADD");
+    }
+}
 
 fn login_account(username: String, password: String){
     write_stream(&mut *STREAM.lock().unwrap(), 

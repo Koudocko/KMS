@@ -129,3 +129,32 @@ pub fn validate_key(payload: Value)-> Result<Option<(User, bool)>, Box<dyn Error
 
    Err(Box::new(PlainError::new()))
 }
+
+pub fn create_kanji(user: &User, mut payload: NewKanji){
+    let connection = &mut establish_connection();
+
+    payload.user_id = user.id;
+
+    Vocab::belonging_to(&user)
+        .load::<Vocab>(connection)
+        .unwrap()
+        .into_iter()
+        .for_each(|mut vocab|{
+            if vocab.phrase.contains(&payload.symbol){
+                vocab.kanji_refs.push(Some(payload.symbol.to_owned()));
+
+                diesel::update(vocab::table.find(vocab.id))
+                    .set(vocab::dsl::kanji_refs.eq(vocab.kanji_refs))
+                    .execute(connection)
+                    .unwrap();
+
+                payload.vocab_refs.push(Some(vocab.phrase));
+            }
+        });
+
+
+    diesel::insert_into(kanji::table)
+        .values(&payload)
+        .execute(connection)
+        .unwrap();
+}

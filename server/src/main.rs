@@ -7,8 +7,8 @@ use std::{
 use serde_json::{Value, json};
 use serde::{Serialize, Deserialize};
 use lib::*;
-use lib::models::{NewUser, User};
-use chrono::{DateTime, Local};
+use lib::models::{NewUser, User, NewKanji};
+use chrono::Local;
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
@@ -67,6 +67,15 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             else{
                 header = String::from("BAD");
                 json!({ "error": "Username does not exist! Please enter a valid username..." }).to_string()
+            }
+        }
+        "CREATE_KANJI" =>{
+            if let Some(user) = &stream.1{
+                create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?);
+                String::new()
+            }
+            else{
+               return Err(Box::new(PlainError::new()));
             }
         }
         _ =>{
