@@ -33,6 +33,10 @@ impl fmt::Display for PlainError{
 }
 impl Error for PlainError{}
 
+pub fn unpack(payload: &str, field: &str)-> Value{
+    serde_json::from_str::<Value>(payload).unwrap()[field].clone()
+}
+
 pub fn write_stream(stream: &mut TcpStream, package: Package)-> Result<(), std::io::Error>{
     let mut buf: Vec<u8> = serde_json::to_vec(&package)?;
     buf.push(b'\n');
@@ -51,7 +55,7 @@ pub fn read_stream(stream: &mut TcpStream)-> Result<Package, std::io::Error>{
 }
 
 pub fn establish_connection() -> PgConnection {
-    let database_url = "postgres://postgres@localhost/SHSM_Project";
+    let database_url = "postgres://postgres@localhost/kms";
 
     PgConnection::establish(&database_url)
         .expect(&format!("Error connecting to {}", database_url))
