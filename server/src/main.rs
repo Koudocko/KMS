@@ -6,7 +6,7 @@ use std::{
 };
 use serde_json::{Value, json};
 use serde::{Serialize, Deserialize};
-use lib::*;
+use lib::{*, models::NewVocab};
 use lib::models::{NewUser, User, NewKanji};
 use chrono::Local;
 
@@ -65,6 +65,20 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 if !create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?){
                     header = String::from("BAD");
                     json!({ "error": "Kanji already exists in database!" }).to_string()
+                }
+                else{
+                    String::new()
+                }
+            }
+            else{
+               return Err(Box::new(PlainError::new()));
+            }
+        }
+        "CREATE_VOCAB" =>{
+            if let Some(user) = &stream.1{
+                if !create_vocab(&user, serde_json::from_str::<NewVocab>(&request.payload)?){
+                    header = String::from("BAD");
+                    json!({ "error": "Vocab already exists in database!" }).to_string()
                 }
                 else{
                     String::new()

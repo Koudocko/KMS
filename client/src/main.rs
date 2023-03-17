@@ -4,7 +4,7 @@ use std::{
     sync::Mutex,
 };
 use lib::*;
-use lib::models::{NewUser, NewKanji};
+use lib::models::{NewUser, NewKanji, NewVocab};
 use ring::rand::SecureRandom;
 use ring::{digest, pbkdf2, rand};
 use std::num::NonZeroU32;
@@ -22,6 +22,31 @@ const SOCKET: &str = "127.0.0.1:7878";
 static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
+
+fn add_vocab(phrase: String, meaning: String, reading: Vec<Option<String>>, description: Option<String>){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("CREATE_VOCAB"), 
+            payload: serde_json::to_string(&NewVocab{
+                phrase,
+                meaning,
+                reading,
+                description,
+                kanji_refs: Vec::new(),
+                user_id: 0,
+            }).unwrap()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("ADDED VOCAB");
+    }
+    else{
+        println!("FAILLED ADD");
+    }
+}
 
 fn add_kanji(symbol: String, meaning: String, onyomi: Vec<Option<String>>, kunyomi: Vec<Option<String>>, description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
@@ -143,7 +168,7 @@ fn add_user(username: String, password: (String, String)){
 }
 
 fn main(){
-    // login_user("Joe bidenr".to_owned(), "__joebidengaming64___".to_owned());
-    add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
+    // login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
+    // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
     // add_kanji(String::from("女"), String::from("Woman"), vec![Some(String::from("じょ"))], vec![Some(String::from("おんな"))], Some(String::from("Jolyne the woman.")));
 }

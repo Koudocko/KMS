@@ -132,6 +132,7 @@ pub fn create_kanji(user: &User, mut payload: NewKanji)-> bool{
     let connection = &mut establish_connection();
 
     if kanji::table.filter(kanji::symbol.eq(&payload.symbol))
+        .filter(kanji::user_id.eq(user.id))
         .first::<Kanji>(connection).is_err(){
         payload.user_id = user.id;
 
@@ -163,3 +164,32 @@ pub fn create_kanji(user: &User, mut payload: NewKanji)-> bool{
     
     false
 }
+
+pub fn create_vocab(user: &User, mut payload: NewVocab)-> bool{
+    let connection = &mut establish_connection();
+
+    if vocab::table.filter(vocab::phrase.eq(&payload.phrase))
+        .filter(vocab::user_id.eq(user.id))
+        .first::<Vocab>(connection).is_err(){
+        payload.user_id = user.id;
+
+        for kanji in payload.phrase.chars(){
+           if kanji::table.filter(kanji::symbol.eq(kanji.to_string())) 
+               .filter(kanji::user_id.eq(user.id))
+               .first::<Kanji>(connection).is_ok(){
+
+                diesel::update(kanji::table.find(vocab.id))
+                    .set(vocab::kanji_refs.eq(vocab.kanji_refs))
+                    .execute(connection)
+                    .unwrap();
+
+                payload.kanji_refs.push(Some(kanji.to_string()));
+           }
+        }
+
+        return true;
+    }
+    
+    false
+}
+
