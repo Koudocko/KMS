@@ -20,7 +20,25 @@ pub struct NewUser{
 }
 
 #[derive(Identifiable, Queryable, Associations)]
-#[diesel(table_name = kanji, belongs_to(User))]
+#[diesel(table_name = groups, belongs_to(User))]
+pub struct Group{
+    pub id: i32,
+    pub title: String,
+    pub colour: Option<String>,
+    pub vocab: bool,
+    pub user_id: i32,
+}
+
+#[derive(Insertable, Serialize, Deserialize)]
+#[diesel(table_name = groups)]
+pub struct NewGroup{
+    pub title: String,
+    pub colour: Option<String>,
+    pub vocab: bool,
+    pub user_id: i32,
+}
+#[derive(Identifiable, Queryable, Associations)]
+#[diesel(table_name = kanji, belongs_to(User), belongs_to(Group))]
 pub struct Kanji{
     pub id: i32,
     pub symbol: String,
@@ -30,6 +48,7 @@ pub struct Kanji{
     pub description: Option<String>,
     pub vocab_refs: Vec<Option<String>>,
     pub user_id: i32,
+    pub group_id: Option<i32>,
 }
 
 #[derive(Insertable, Serialize, Deserialize)]
@@ -42,10 +61,11 @@ pub struct NewKanji{
     pub description: Option<String>,
     pub vocab_refs: Vec<Option<String>>,
     pub user_id: i32,
+    pub group_id: Option<i32>,
 }
 
 #[derive(Identifiable, Queryable, Associations)]
-#[diesel(table_name = vocab, belongs_to(User))]
+#[diesel(table_name = vocab, belongs_to(User), belongs_to(Group))]
 pub struct Vocab{
     pub id: i32,
     pub phrase: String,
@@ -54,6 +74,7 @@ pub struct Vocab{
     pub description: Option<String>,
     pub kanji_refs: Vec<Option<String>>,
     pub user_id: i32,
+    pub group_id: Option<i32>,
 }
 
 #[derive(Insertable, Serialize, Deserialize)]
@@ -65,4 +86,5 @@ pub struct NewVocab{
     pub description: Option<String>,
     pub kanji_refs: Vec<Option<String>>,
     pub user_id: i32,
+    pub group_id: Option<i32>,
 }

@@ -8,5 +8,9 @@ CREATE TABLE vocab (
   user_id INT NOT NULL,
   CONSTRAINT fk_user
     FOREIGN KEY(user_id)
-     REFERENCES "users"(id)
+     REFERENCES "users"(id),
+  group_id INT,
+  CONSTRAINT fk_group
+    FOREIGN KEY(group_id)
+     REFERENCES "groups"(id)
 );
