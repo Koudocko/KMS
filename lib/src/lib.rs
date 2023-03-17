@@ -61,30 +61,28 @@ pub fn establish_connection() -> PgConnection {
         .expect(&format!("Error connecting to {}", database_url))
 }
 
-pub fn check_username(payload: Value)-> Result<bool, Box<dyn Error>>{
+pub fn create_user(payload: NewUser)-> bool{
     let connection = &mut establish_connection();
 
-    if let Some(payload) = payload["username"].as_str(){
-        Ok(users::dsl::users.filter(users::dsl::username.eq(payload)).first::<User>(connection).is_err())
-    }
-    else{
-        Err(Box::new(PlainError::new())) 
-    }
-}
+    if users::table.filter(users::username.eq(payload.username.to_owned()))
+        .first::<User>(connection).is_err(){
+        diesel::insert_into(users::table)
+            .values(&payload)
+            .execute(connection)
+            .unwrap();
 
-pub fn store_in_database(new_user: NewUser)-> Result<usize, Box<dyn Error>>{
-    let connection = &mut establish_connection();
-
-    Ok(diesel::insert_into(schema::users::table)
-        .values(&new_user)
-        .execute(connection)?)
+        return true;
+    }
+    
+    false
 }
 
 pub fn get_account_keys(payload: Value)-> Result<Option<String>, Box<dyn Error>>{
     let connection = &mut establish_connection();
 
     if let Some(payload) = payload["username"].as_str(){
-        if let Ok(user) = users::dsl::users.filter(users::dsl::username.eq(payload)).first::<User>(connection){
+        if let Ok(user) = users::table.filter(users::username.eq(payload))
+            .first::<User>(connection){
             Ok(Some(json!({ "salt": user.salt }).to_string()))
         }
         else{
@@ -111,7 +109,7 @@ pub fn validate_key(payload: Value)-> Result<Option<(User, bool)>, Box<dyn Error
         }).collect::<Vec<u8>>();
 
         if let Some(user_username) = payload["username"].as_str(){
-            if let Ok(user) = users::dsl::users.filter(users::dsl::username.eq(user_username)).first::<User>(connection){
+            if let Ok(user) = users::table.filter(users::username.eq(user_username)).first::<User>(connection){
                 let mut idx = 0;
                 let verified = !user_hash.iter().any(|byte|{
                     let check = *byte != user.hash[idx];
@@ -130,31 +128,38 @@ pub fn validate_key(payload: Value)-> Result<Option<(User, bool)>, Box<dyn Error
    Err(Box::new(PlainError::new()))
 }
 
-pub fn create_kanji(user: &User, mut payload: NewKanji){
+pub fn create_kanji(user: &User, mut payload: NewKanji)-> bool{
     let connection = &mut establish_connection();
 
-    payload.user_id = user.id;
+    if kanji::table.filter(kanji::symbol.eq(&payload.symbol))
+        .first::<Kanji>(connection).is_err(){
+        payload.user_id = user.id;
 
-    Vocab::belonging_to(&user)
-        .load::<Vocab>(connection)
-        .unwrap()
-        .into_iter()
-        .for_each(|mut vocab|{
-            if vocab.phrase.contains(&payload.symbol){
-                vocab.kanji_refs.push(Some(payload.symbol.to_owned()));
+        Vocab::belonging_to(&user)
+            .load::<Vocab>(connection)
+            .unwrap()
+            .into_iter()
+            .for_each(|mut vocab|{
+                if vocab.phrase.contains(&payload.symbol){
+                    vocab.kanji_refs.push(Some(payload.symbol.to_owned()));
 
-                diesel::update(vocab::table.find(vocab.id))
-                    .set(vocab::dsl::kanji_refs.eq(vocab.kanji_refs))
-                    .execute(connection)
-                    .unwrap();
+                    diesel::update(vocab::table.find(vocab.id))
+                        .set(vocab::kanji_refs.eq(vocab.kanji_refs))
+                        .execute(connection)
+                        .unwrap();
 
-                payload.vocab_refs.push(Some(vocab.phrase));
-            }
-        });
+                    payload.vocab_refs.push(Some(vocab.phrase));
+                }
+            });
 
 
-    diesel::insert_into(kanji::table)
-        .values(&payload)
-        .execute(connection)
-        .unwrap();
+        diesel::insert_into(kanji::table)
+            .values(&payload)
+            .execute(connection)
+            .unwrap();
+
+        return true;
+    }
+    
+    false
 }

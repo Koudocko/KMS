@@ -26,19 +26,10 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
 
     let mut header = String::from("GOOD");
     let payload = match request.header.as_str(){
-        "CHECK_ACCOUNT" =>{
-            if !check_username(serde_json::from_str::<Value>(&request.payload)?)?{
-                header = String::from("BAD");
-                json!({ "error": "Username already exists! Please change to continue..." }).to_string()
-            }
-            else{
-                String::new()
-            }
-        }
-        "CREATE_ACCOUNT" =>{
-            if store_in_database(serde_json::from_str::<NewUser>(&request.payload)?).is_err(){
+        "CREATE_USER" =>{
+            if !create_user(serde_json::from_str::<NewUser>(&request.payload)?){
                header = String::from("BAD");
-               json!({ "error": "Failed to signup! Please try again..." }).to_string()
+               json!({ "error": "Username already exists! Please enter a different username..." }).to_string()
             }
             else{
                 String::new()
@@ -71,8 +62,13 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         }
         "CREATE_KANJI" =>{
             if let Some(user) = &stream.1{
-                create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?);
-                String::new()
+                if !create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?){
+                    header = String::from("BAD");
+                    json!({ "error": "Kanji already exists in database!" }).to_string()
+                }
+                else{
+                    String::new()
+                }
             }
             else{
                return Err(Box::new(PlainError::new()));
