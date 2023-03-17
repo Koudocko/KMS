@@ -4,7 +4,7 @@ use std::{
     sync::Mutex,
 };
 use lib::*;
-use lib::models::{NewUser, NewKanji, NewVocab};
+use lib::models::{NewUser, NewKanji, NewVocab, NewGroup};
 use ring::rand::SecureRandom;
 use ring::{digest, pbkdf2, rand};
 use std::num::NonZeroU32;
@@ -23,6 +23,29 @@ static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
 
+fn add_group(title: String, colour: Option<String>, vocab: bool){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("CREATE_GROUP"), 
+            payload: serde_json::to_string(&NewGroup{
+                title,
+                colour,
+                vocab,
+                user_id: 0,
+            }).unwrap()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("ADDED GROUP");
+    }
+    else{
+        println!("FAILLED ADD");
+    }
+}
+
 fn add_vocab(phrase: String, meaning: String, reading: Vec<Option<String>>, description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
@@ -34,6 +57,7 @@ fn add_vocab(phrase: String, meaning: String, reading: Vec<Option<String>>, desc
                 description,
                 kanji_refs: Vec::new(),
                 user_id: 0,
+                group_id: None,
             }).unwrap()
         }
     ).unwrap();
@@ -60,6 +84,7 @@ fn add_kanji(symbol: String, meaning: String, onyomi: Vec<Option<String>>, kunyo
                 description,
                 vocab_refs: Vec::new(),
                 user_id: 0,
+                group_id: None,
             }).unwrap()
         }
     ).unwrap();
@@ -168,9 +193,11 @@ fn add_user(username: String, password: (String, String)){
 }
 
 fn main(){
+    // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
     login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
+    add_group("Adjectives".to_owned(), Some("#FFFFFF".to_owned()), true);
     // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
     // add_kanji(String::from("女"), String::from("Woman"), vec![Some(String::from("じょ"))], vec![Some(String::from("おんな"))], Some(String::from("Jolyne the woman.")));
-    add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
+    // add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
     // add_vocab(String::from("下さい"), String::from("Please"), vec![Some(String::from("ください"))], Some(String::from("Kudos, you got it correct now please leave.")));
 }

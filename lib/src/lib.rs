@@ -183,3 +183,21 @@ pub fn create_vocab(user: &User, mut payload: NewVocab)-> Eval<()>{
     Ok(None)
 }
 
+pub fn create_group(user: &User, mut payload: NewGroup)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if groups::table.filter(groups::title.eq(&payload.title))
+        .filter(groups::user_id.eq(user.id))
+        .first::<Group>(connection).is_err(){
+        payload.user_id = user.id;
+
+        diesel::insert_into(groups::table)
+            .values(&payload)
+            .execute(connection)?;
+
+        return Ok(Some(()));
+    }
+    
+    Ok(None)
+}
+

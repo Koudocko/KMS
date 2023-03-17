@@ -6,9 +6,10 @@ use std::{
 };
 use serde_json::{Value, json};
 use serde::{Serialize, Deserialize};
-use lib::{*, models::NewVocab};
-use lib::models::{NewUser, User, NewKanji};
+use lib::*;
+use lib::models::{NewUser, User, NewKanji, NewVocab, NewGroup};
 use chrono::Local;
+use regex::Regex;
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
@@ -88,6 +89,42 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                return terminate::<()>();
             }
         }
+        "CREATE_GROUP" =>{
+            if let Some(user) = &stream.1{
+                let new_group = serde_json::from_str::<NewGroup>(&request.payload)?;
+
+                if new_group.colour.is_none() || Regex::new(r"^#([0-9A-Fa-f]{6})$").unwrap().is_match(new_group.colour.as_ref().unwrap()){
+                    if create_group(&user, new_group)?.is_none(){
+                        header = String::from("BAD");
+                        json!({ "error": "Group already exists in database!" }).to_string()
+                    }
+                    else{
+                        String::new()
+                    }
+                }
+                else{
+                    header = String::from("BAD");
+                    json!({ "error": "Provided colour is not a valid hexcode!}" }).to_string()
+                }
+            }
+            else{
+               return terminate::<()>();
+            }
+        }
+        // "DELETE_USER" =>{
+        //     if let Some(user) = &stream.1{
+        //         if delete_user(&user, serde_json::from_str::<NewVocab>(&request.payload)?)?.is_none(){
+        //             header = String::from("BAD");
+        //             json!({ "error": "Vocab already exists in database!" }).to_string()
+        //         }
+        //         else{
+        //             String::new()
+        //         }
+        //     }
+        //     else{
+        //        return terminate::<()>();
+        //     }
+        // }
         _ =>{
             header = String::from("BAD");
             json!({ "error": "Invalid request header!" }).to_string()
