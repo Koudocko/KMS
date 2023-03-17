@@ -174,18 +174,24 @@ pub fn create_vocab(user: &User, mut payload: NewVocab)-> bool{
         payload.user_id = user.id;
 
         for kanji in payload.phrase.chars(){
-           if kanji::table.filter(kanji::symbol.eq(kanji.to_string())) 
+           if let Ok(mut kanji) = kanji::table.filter(kanji::symbol.eq(kanji.to_string())) 
                .filter(kanji::user_id.eq(user.id))
-               .first::<Kanji>(connection).is_ok(){
+               .first::<Kanji>(connection){
+                kanji.vocab_refs.push(Some(payload.phrase.to_owned()));
 
-                diesel::update(kanji::table.find(vocab.id))
-                    .set(vocab::kanji_refs.eq(vocab.kanji_refs))
+                diesel::update(kanji::table.find(kanji.id))
+                    .set(kanji::vocab_refs.eq(kanji.vocab_refs))
                     .execute(connection)
                     .unwrap();
 
-                payload.kanji_refs.push(Some(kanji.to_string()));
+                payload.kanji_refs.push(Some(kanji.symbol));
            }
         }
+
+        diesel::insert_into(vocab::table)
+            .values(&payload)
+            .execute(connection)
+            .unwrap();
 
         return true;
     }
