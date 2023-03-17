@@ -19,22 +19,13 @@ fn log_activity(file: &Arc<Mutex<File>>, msg: String){
     println!("{time} - {msg}\n");
 }
 
-fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<File>>)-> Result<(), Box<dyn Error>> {
+fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<File>>)-> Eval<()>{
     stream.0.set_nonblocking(false)?;
     let request = read_stream(&mut stream.0)?;
     log_activity(file, format!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), request.header, request.payload));
 
     let mut header = String::from("GOOD");
     let payload = match request.header.as_str(){
-        "CREATE_USER" =>{
-            if !create_user(serde_json::from_str::<NewUser>(&request.payload)?){
-               header = String::from("BAD");
-               json!({ "error": "Username already exists! Please enter a different username..." }).to_string()
-            }
-            else{
-                String::new()
-            }
-        }
         "GET_ACCOUNT_KEYS" =>{
             if let Some(keys) = get_account_keys(serde_json::from_str::<Value>(&request.payload)?)?{
                 keys 
@@ -60,9 +51,18 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 json!({ "error": "Username does not exist! Please enter a valid username..." }).to_string()
             }
         }
+        "CREATE_USER" =>{
+            if create_user(serde_json::from_str::<NewUser>(&request.payload)?)?.is_none(){
+               header = String::from("BAD");
+               json!({ "error": "Username already exists! Please enter a different username..." }).to_string()
+            }
+            else{
+                String::new()
+            }
+        }
         "CREATE_KANJI" =>{
             if let Some(user) = &stream.1{
-                if !create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?){
+                if create_kanji(&user, serde_json::from_str::<NewKanji>(&request.payload)?)?.is_none(){
                     header = String::from("BAD");
                     json!({ "error": "Kanji already exists in database!" }).to_string()
                 }
@@ -71,12 +71,12 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 }
             }
             else{
-               return Err(Box::new(PlainError::new()));
+               return terminate::<()>();
             }
         }
         "CREATE_VOCAB" =>{
             if let Some(user) = &stream.1{
-                if !create_vocab(&user, serde_json::from_str::<NewVocab>(&request.payload)?){
+                if create_vocab(&user, serde_json::from_str::<NewVocab>(&request.payload)?)?.is_none(){
                     header = String::from("BAD");
                     json!({ "error": "Vocab already exists in database!" }).to_string()
                 }
@@ -85,7 +85,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 }
             }
             else{
-               return Err(Box::new(PlainError::new()));
+               return terminate::<()>();
             }
         }
         _ =>{
@@ -98,7 +98,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
     log_activity(&file, format!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", stream.0.peer_addr()?.to_string(), stream.1.is_some(), outgoing.header, outgoing.payload));
     write_stream(&mut stream.0, outgoing)?;
 
-    Ok(())
+    Ok(Some(()))
 }
 
 fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>, file: Arc<Mutex<File>>){

@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 use schema::*;
 use std::{
-    io::{prelude::*, BufReader},
+    io::{prelude::*, BufReader, self},
     net::TcpStream, error::Error
 };
 use diesel::{
@@ -10,10 +10,11 @@ use diesel::{
 };
 use models::*;
 use serde_json::{json, Value};
-use std::fmt;
 
 pub mod schema;
 pub mod models;
+
+pub type Eval<T> = Result<Option<T>, Box<dyn Error>>;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Package{
@@ -21,23 +22,15 @@ pub struct Package{
     pub payload: String
 }
 
-#[derive(Debug, Clone)]
-pub struct PlainError;
-impl PlainError{
-    pub fn new()-> PlainError{ PlainError }
+pub fn terminate<T>()-> Eval<T>{
+    Err(Box::new(io::Error::new(io::ErrorKind::Other, "Terminate")))
 }
-impl fmt::Display for PlainError{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "")
-    }
-}
-impl Error for PlainError{}
 
 pub fn unpack(payload: &str, field: &str)-> Value{
     serde_json::from_str::<Value>(payload).unwrap()[field].clone()
 }
 
-pub fn write_stream(stream: &mut TcpStream, package: Package)-> Result<(), std::io::Error>{
+pub fn write_stream(stream: &mut TcpStream, package: Package)-> Result<(), io::Error>{
     let mut buf: Vec<u8> = serde_json::to_vec(&package)?;
     buf.push(b'\n');
     stream.write_all(&mut buf)?;
@@ -45,7 +38,7 @@ pub fn write_stream(stream: &mut TcpStream, package: Package)-> Result<(), std::
     Ok(())
 }
 
-pub fn read_stream(stream: &mut TcpStream)-> Result<Package, std::io::Error>{
+pub fn read_stream(stream: &mut TcpStream)-> Result<Package, io::Error>{
     let mut buf = String::new();
 
     BufReader::new(stream)
@@ -54,47 +47,45 @@ pub fn read_stream(stream: &mut TcpStream)-> Result<Package, std::io::Error>{
     Ok(serde_json::from_str(&buf)?)
 }
 
-pub fn establish_connection() -> PgConnection {
+pub fn establish_connection() -> PgConnection{
     let database_url = "postgres://postgres@localhost/kms";
 
     PgConnection::establish(&database_url)
         .expect(&format!("Error connecting to {}", database_url))
 }
 
-pub fn create_user(payload: NewUser)-> bool{
+pub fn create_user(payload: NewUser)-> Eval<()>{
     let connection = &mut establish_connection();
 
     if users::table.filter(users::username.eq(payload.username.to_owned()))
         .first::<User>(connection).is_err(){
         diesel::insert_into(users::table)
             .values(&payload)
-            .execute(connection)
-            .unwrap();
+            .execute(connection)?;
 
-        return true;
+        return Ok(Some(()));
     }
     
-    false
+    Ok(None)
 }
 
-pub fn get_account_keys(payload: Value)-> Result<Option<String>, Box<dyn Error>>{
+pub fn get_account_keys(payload: Value)-> Eval<String>{
     let connection = &mut establish_connection();
 
     if let Some(payload) = payload["username"].as_str(){
         if let Ok(user) = users::table.filter(users::username.eq(payload))
             .first::<User>(connection){
-            Ok(Some(json!({ "salt": user.salt }).to_string()))
+            return Ok(Some(json!({ "salt": user.salt }).to_string()));
         }
         else{
-            Ok(None)
+            return Ok(None);
         }
     }
-    else{
-       Err(Box::new(PlainError::new()))
-    }
+
+   terminate::<String>()
 }
 
-pub fn validate_key(payload: Value)-> Result<Option<(User, bool)>, Box<dyn Error>>{
+pub fn validate_key(payload: Value)-> Eval<(User, bool)>{
     let connection = &mut establish_connection();
 
     if let Some(user_hash) = payload["hash"].as_array(){
@@ -125,10 +116,10 @@ pub fn validate_key(payload: Value)-> Result<Option<(User, bool)>, Box<dyn Error
         }
     }
 
-   Err(Box::new(PlainError::new()))
+    terminate::<(User, bool)>()
 }
 
-pub fn create_kanji(user: &User, mut payload: NewKanji)-> bool{
+pub fn create_kanji(user: &User, mut payload: NewKanji)-> Eval<()>{
     let connection = &mut establish_connection();
 
     if kanji::table.filter(kanji::symbol.eq(&payload.symbol))
@@ -136,36 +127,31 @@ pub fn create_kanji(user: &User, mut payload: NewKanji)-> bool{
         .first::<Kanji>(connection).is_err(){
         payload.user_id = user.id;
 
-        Vocab::belonging_to(&user)
+        for mut vocab in Vocab::belonging_to(&user)
             .load::<Vocab>(connection)
-            .unwrap()
-            .into_iter()
-            .for_each(|mut vocab|{
-                if vocab.phrase.contains(&payload.symbol){
-                    vocab.kanji_refs.push(Some(payload.symbol.to_owned()));
+            .unwrap(){
+            if vocab.phrase.contains(&payload.symbol){
+                vocab.kanji_refs.push(Some(payload.symbol.to_owned()));
 
-                    diesel::update(vocab::table.find(vocab.id))
-                        .set(vocab::kanji_refs.eq(vocab.kanji_refs))
-                        .execute(connection)
-                        .unwrap();
+                diesel::update(vocab::table.find(vocab.id))
+                    .set(vocab::kanji_refs.eq(vocab.kanji_refs))
+                    .execute(connection)?;
 
-                    payload.vocab_refs.push(Some(vocab.phrase));
-                }
-            });
-
+                payload.vocab_refs.push(Some(vocab.phrase));
+            }
+        }
 
         diesel::insert_into(kanji::table)
             .values(&payload)
-            .execute(connection)
-            .unwrap();
+            .execute(connection)?;
 
-        return true;
+        return Ok(Some(()));
     }
     
-    false
+    Ok(None)
 }
 
-pub fn create_vocab(user: &User, mut payload: NewVocab)-> bool{
+pub fn create_vocab(user: &User, mut payload: NewVocab)-> Eval<()>{
     let connection = &mut establish_connection();
 
     if vocab::table.filter(vocab::phrase.eq(&payload.phrase))
@@ -181,8 +167,7 @@ pub fn create_vocab(user: &User, mut payload: NewVocab)-> bool{
 
                 diesel::update(kanji::table.find(kanji.id))
                     .set(kanji::vocab_refs.eq(kanji.vocab_refs))
-                    .execute(connection)
-                    .unwrap();
+                    .execute(connection)?;
 
                 payload.kanji_refs.push(Some(kanji.symbol));
            }
@@ -190,12 +175,11 @@ pub fn create_vocab(user: &User, mut payload: NewVocab)-> bool{
 
         diesel::insert_into(vocab::table)
             .values(&payload)
-            .execute(connection)
-            .unwrap();
+            .execute(connection)?;
 
-        return true;
+        return Ok(Some(()));
     }
     
-    false
+    Ok(None)
 }
 
