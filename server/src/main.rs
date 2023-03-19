@@ -77,12 +77,16 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         }
         "CREATE_KANJI" =>{
             if let Some(user) = &stream.1{
-                if let Err("KANJI_EXISTS") = create_kanji(&user, request.payload){
-                    header = String::from("BAD");
-                    json!({ "error": "Kanji already exists in database!" }).to_string()
-                }
-                else{
-                    String::new()
+                match create_kanji(&user, request.payload){
+                    Err("KANJI_EXISTS") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Kanji already exists in database!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
                 }
             }
             else{
@@ -92,12 +96,16 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         }
         "CREATE_VOCAB" =>{
             if let Some(user) = &stream.1{
-                if let Err("VOCAB_EXISTS") = create_vocab(&user, request.payload){
-                    header = String::from("BAD");
-                    json!({ "error": "Vocab already exists in database!" }).to_string()
-                }
-                else{
-                    String::new()
+                match create_vocab(&user, request.payload){
+                    Err("VOCAB_EXISTS") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Vocab already exists in database!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
                 }
             }
             else{
@@ -119,6 +127,10 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                     Err("INVALID_HEXCODE") =>{
                         header = String::from("BAD");
                         json!({ "error": "Invalid format for hexcode! Provide a valid colour hexcode..." }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
                     }
                     _ => String::new(),
                 }
@@ -146,6 +158,125 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                     Err("ALREADY_ADDED") =>{
                         header = String::from("BAD");
                         json!({ "error": "Kanji already added to group!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "CREATE_GROUP_VOCAB" =>{
+            if let Some(user) = &stream.1{
+                match create_group_kanji(&user, request.payload){
+                    Err("INVALID_VOCAB") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Vocab selected does not exist! Pick a valid vocab..." }).to_string()
+                    }
+                    Err("INVALID_GROUP") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Group selected does not exist! Pick a valid group..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    Err("ALREADY_ADDED") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Kanji already added to group!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "DELETE_USER" =>{
+            if let Some(user) = &stream.1{
+                match delete_user(&user){
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "DELETE_KANJI" =>{
+            if let Some(user) = &stream.1{
+                match delete_kanji(&user, request.payload){
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    Err("INVALID_KANJI") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Kanji selected does not exist! Pick a valid kanji..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "DELETE_VOCAB" =>{
+            if let Some(user) = &stream.1{
+                match delete_vocab(&user, request.payload){
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    Err("INVALID_VOCAB") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Vocab selected does not exist! Pick a valid vocab..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "DELETE_GROUP" =>{
+            if let Some(user) = &stream.1{
+                match delete_group(&user, request.payload){
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    Err("INVALID_GROUP") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Group selected does not exist! Pick a valid gropu..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
                     }
                     _ => String::new(),
                 }

@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use schema::*;
+use schema::{*, groups::user_id};
 use std::{
     io::{prelude::*, BufReader, self},
     net::TcpStream,
@@ -80,9 +80,8 @@ pub fn get_account_keys(payload: String)-> Eval<String>{
                 .first::<User>(connection){
                 return Ok(json!({ "salt": user.salt }).to_string());
             }
-            else{
-                return Err("INVALID_USER");
-            }
+
+            return Err("INVALID_USER");
         }
     }
 
@@ -116,9 +115,8 @@ pub fn validate_key(payload: String)-> Eval<(User, bool)>{
 
                     return Ok((user, verified));
                 }
-                else{
-                    return Err("INVALID_USER");
-                }
+
+                return Err("INVALID_USER");
             }
         }
     }
@@ -128,6 +126,11 @@ pub fn validate_key(payload: String)-> Eval<(User, bool)>{
 
 pub fn create_kanji(user: &User, payload: String)-> Eval<()>{
     let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
 
     if let Ok(mut payload) = serde_json::from_str::<NewKanji>(&payload){
         if kanji::table.filter(kanji::symbol.eq(&payload.symbol))
@@ -167,6 +170,11 @@ pub fn create_kanji(user: &User, payload: String)-> Eval<()>{
 pub fn create_vocab(user: &User, payload: String)-> Eval<()>{
     let connection = &mut establish_connection();
 
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
     if let Ok(mut payload) = serde_json::from_str::<NewVocab>(&payload){
         if vocab::table.filter(vocab::phrase.eq(&payload.phrase))
             .filter(vocab::user_id.eq(user.id))
@@ -205,6 +213,11 @@ pub fn create_vocab(user: &User, payload: String)-> Eval<()>{
 pub fn create_group(user: &User, payload: String)-> Eval<()>{
     let connection = &mut establish_connection();
 
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
     if let Ok(mut payload) = serde_json::from_str::<NewGroup>(&payload){
         if payload.colour.is_none() || Regex::new(r"^#([0-9A-Fa-f]{6})$")
             .unwrap()
@@ -236,13 +249,18 @@ pub fn create_group(user: &User, payload: String)-> Eval<()>{
 pub fn create_group_kanji(user: &User, payload: String)-> Eval<()>{
     let connection = &mut establish_connection();
 
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
         if let Some(group_title) = payload["group"].as_str(){
-            if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
-                .filter(groups::user_id.eq(user.id))
-                .filter(groups::vocab.eq(false))
-                .first::<Group>(connection){
-                if let Some(kanji_symbol) = payload["kanji"].as_str(){
+            if let Some(kanji_symbol) = payload["kanji"].as_str(){
+                if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
+                    .filter(groups::user_id.eq(user.id))
+                    .filter(groups::vocab.eq(false))
+                    .first::<Group>(connection){
                     if let Ok(user_kanji) = kanji::table.filter(kanji::symbol.eq(kanji_symbol))
                         .filter(kanji::user_id.eq(user.id))
                         .first::<Kanji>(connection){
@@ -258,14 +276,153 @@ pub fn create_group_kanji(user: &User, payload: String)-> Eval<()>{
 
                         return Err("ALREADY_ADDED");
                     }
-                    else{
-                        return Err("INVALID_KANJI")
-                    }
+
+                    return Err("INVALID_KANJI")
                 }
-            }
-            else{
+
                 return Err("INVALID_GROUP")
             }
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
+pub fn delete_user(user: &User)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    for kanji in Kanji::belonging_to(user)
+        .load::<Kanji>(connection)
+        .unwrap(){
+        diesel::delete(&kanji)
+            .execute(connection)
+            .is_ok();
+    }
+
+    for vocab in Vocab::belonging_to(user)
+        .load::<Vocab>(connection)
+        .unwrap(){
+        diesel::delete(&vocab)
+            .execute(connection)
+            .is_ok();
+    }
+
+    for group in Group::belonging_to(user)
+        .load::<Group>(connection)
+        .unwrap(){
+        diesel::delete(&group)
+            .execute(connection)
+            .is_ok();
+    }
+
+    diesel::delete(user)
+        .execute(connection)
+        .is_ok();
+
+    Ok(())
+}
+
+pub fn delete_kanji(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(kanji_symbol) = payload["kanji"].as_str(){
+            if let Ok(user_kanji) = kanji::table.filter(kanji::symbol.eq(kanji_symbol))
+                .filter(kanji::user_id.eq(user.id))
+                .first::<Kanji>(connection){
+                diesel::delete(&user_kanji)
+                    .execute(connection)
+                    .is_ok();
+
+                return Ok(());
+            }
+
+            return Err("INVALID_KANJI");
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
+pub fn delete_vocab(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(vocab_phrase) = payload["vocab"].as_str(){
+            if let Ok(user_vocab) = vocab::table.filter(vocab::phrase.eq(vocab_phrase))
+                .filter(vocab::user_id.eq(user.id))
+                .first::<Vocab>(connection){
+                diesel::delete(&user_vocab)
+                    .execute(connection)
+                    .is_ok();
+
+                return Ok(());
+            }
+
+            return Err("INVALID_VOCAB");
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
+pub fn delete_group(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(group_title) = payload["group"].as_str(){
+            if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
+                .filter(groups::user_id.eq(user.id))
+                .first::<Group>(connection){
+                if user_group.vocab{
+                    for vocab in Vocab::belonging_to(&user_group)
+                        .load::<Vocab>(connection)
+                        .unwrap(){
+                        diesel::update(&vocab)
+                            .set(vocab::group_id.eq(None::<i32>))
+                            .execute(connection)
+                            .is_ok();
+                    }
+                }
+                else{
+                    for kanji in Kanji::belonging_to(&user_group)
+                        .load::<Kanji>(connection)
+                        .unwrap(){
+                        diesel::update(&kanji)
+                            .set(kanji::group_id.eq(None::<i32>))
+                            .execute(connection)
+                            .is_ok();
+                    }
+                }
+
+                diesel::delete(&user_group)
+                    .execute(connection)
+                    .is_ok();
+
+                return Ok(());
+            }
+
+            return Err("INVALID_GROUP");
         }
     }
 
