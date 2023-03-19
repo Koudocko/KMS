@@ -11,4 +11,3 @@ tokio = { version = "1", features = ["full"] }
 lib = { path = "../lib" }
 serde_json = "1.0"
 chrono = "0.4.24"
-regex = "1.7.1"
