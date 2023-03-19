@@ -15,7 +15,6 @@ use regex::Regex;
 pub mod schema;
 pub mod models;
 
-// pub type Eval<T> = Result<Option<T>, Box<dyn Error>>;
 pub type Eval<T> = Result<T, &'static str>;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -23,10 +22,6 @@ pub struct Package{
     pub header: String,
     pub payload: String
 }
-
-// pub fn terminate<T>()-> Eval<T>{
-//     Err(Box::new(io::Error::new(io::ErrorKind::Other, "Terminate")))
-// }
 
 pub fn unpack(payload: &str, field: &str)-> Value{
     serde_json::from_str::<Value>(payload).unwrap()[field].clone()
@@ -245,17 +240,27 @@ pub fn create_group_kanji(user: &User, payload: String)-> Eval<()>{
         if let Some(group_title) = payload["group"].as_str(){
             if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
                 .filter(groups::user_id.eq(user.id))
+                .filter(groups::vocab.eq(false))
                 .first::<Group>(connection){
                 if let Some(kanji_symbol) = payload["kanji"].as_str(){
-                    if diesel::update(kanji::table)
-                        .filter(kanji::symbol.eq(kanji_symbol))
-                        .set(kanji::group_id.eq(user_group.id))
-                        .execute(connection)
-                        .is_err(){
+                    if let Ok(user_kanji) = kanji::table.filter(kanji::symbol.eq(kanji_symbol))
+                        .filter(kanji::user_id.eq(user.id))
+                        .first::<Kanji>(connection){
+
+                        if user_kanji.group_id.is_none(){
+                            diesel::update(&user_kanji)
+                                .set(kanji::group_id.eq(user_group.id))
+                                .execute(connection)
+                                .is_ok();
+
+                            return Ok(());
+                        }
+
+                        return Err("ALREADY_ADDED");
+                    }
+                    else{
                         return Err("INVALID_KANJI")
                     }
-
-                    return Ok(());
                 }
             }
             else{

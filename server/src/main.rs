@@ -143,6 +143,10 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                         header = String::from("BAD");
                         json!({ "error": "Request body format is ill-formed!" }).to_string()
                     }
+                    Err("ALREADY_ADDED") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Kanji already added to group!" }).to_string()
+                    }
                     _ => String::new(),
                 }
             }
@@ -151,20 +155,6 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
             }
         }
-        // "DELETE_USER" =>{
-        //     if let Some(user) = &stream.1{
-        //         if delete_user(&user, serde_json::from_str::<NewVocab>(&request.payload)?)?.is_none(){
-        //             header = String::from("BAD");
-        //             json!({ "error": "Vocab already exists in database!" }).to_string()
-        //         }
-        //         else{
-        //             String::new()
-        //         }
-        //     }
-        //     else{
-        //        return terminate::<()>();
-        //     }
-        // }
         _ =>{
             header = String::from("BAD");
             json!({ "error": "Invalid request header!" }).to_string()
