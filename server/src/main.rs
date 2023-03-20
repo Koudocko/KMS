@@ -173,7 +173,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         }
         "CREATE_GROUP_VOCAB" =>{
             if let Some(user) = &stream.1{
-                match create_group_kanji(&user, request.payload){
+                match create_group_vocab(&user, request.payload){
                     Err("INVALID_VOCAB") =>{
                         header = String::from("BAD");
                         json!({ "error": "Vocab selected does not exist! Pick a valid vocab..." }).to_string()
@@ -188,7 +188,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                     }
                     Err("ALREADY_ADDED") =>{
                         header = String::from("BAD");
-                        json!({ "error": "Kanji already added to group!" }).to_string()
+                        json!({ "error": "Vocab already added to group!" }).to_string()
                     }
                     Err("INVALID_USER") =>{
                         header = String::from("BAD");

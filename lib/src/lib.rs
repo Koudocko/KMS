@@ -288,6 +288,48 @@ pub fn create_group_kanji(user: &User, payload: String)-> Eval<()>{
     Err("INVALID_FORMAT")
 }
 
+pub fn create_group_vocab(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(group_title) = payload["group"].as_str(){
+            if let Some(vocab_phrase) = payload["vocab"].as_str(){
+                if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
+                    .filter(groups::user_id.eq(user.id))
+                    .filter(groups::vocab.eq(true))
+                    .first::<Group>(connection){
+                    if let Ok(user_vocab) = vocab::table.filter(vocab::phrase.eq(vocab_phrase))
+                        .filter(vocab::user_id.eq(user.id))
+                        .first::<Vocab>(connection){
+
+                        if user_vocab.group_id.is_none(){
+                            diesel::update(&user_vocab)
+                                .set(vocab::group_id.eq(user_group.id))
+                                .execute(connection)
+                                .is_ok();
+
+                            return Ok(());
+                        }
+
+                        return Err("ALREADY_ADDED");
+                    }
+
+                    return Err("INVALID_VOCAB")
+                }
+
+                return Err("INVALID_GROUP")
+            }
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
 pub fn delete_user(user: &User)-> Eval<()>{
     let connection = &mut establish_connection();
 

@@ -95,6 +95,24 @@ fn remove_user(){
     }
 }
 
+fn add_group_vocab(vocab: String, group: String){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("CREATE_GROUP_VOCAB"), 
+            payload: json!({ "vocab": vocab, "group": group }).to_string()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("ADDED vocab to GROUP");
+    }
+    else{
+        println!("FAILLED ADD");
+    }
+}
+
 fn add_group_kanji(kanji: String, group: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
@@ -291,6 +309,7 @@ fn main(){
     // add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
     // add_vocab(String::from("下さい"), String::from("Please"), vec![Some(String::from("ください"))], Some(String::from("Kudos, you got it correct now please leave.")));
     add_group_kanji(String::from("女"), String::from("Nouns"));
+    add_group_vocab(String::from("下さい"), String::from("Nouns"));
     // remove_kanji(String::from("女"));
     // remove_vocab(String::from("下さい"));
 }
