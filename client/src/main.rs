@@ -23,6 +23,42 @@ static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
 
+fn remove_group_vocab(vocab_phrase: String, group_title: String){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("DELETE_GROUP_VOCAB"), 
+            payload: json!({ "vocab_phrase": vocab_phrase, "group_title": group_title }).to_string()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("REMOVED vocab from GROUP");
+    }
+    else{
+        println!("FAILLED remove");
+    }
+}
+
+fn remove_group_kanji(kanji_symbol: String, group_title: String){
+    write_stream(&mut *STREAM.lock().unwrap(), 
+        Package { 
+            header: String::from("DELETE_GROUP_KANJI"), 
+            payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
+        }
+    ).unwrap();
+
+    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+    if response.header == "GOOD"{
+        println!("REMOVED Kanji from GROUP");
+    }
+    else{
+        println!("FAILLED remove");
+    }
+}
+
 fn remove_group(group_title: String, group_vocab: bool){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
@@ -314,4 +350,6 @@ fn main(){
     // remove_vocab(String::from("下さい"));
     // remove_group(String::from("Nouns"), false);
     // remove_user();
+    remove_group_kanji(String::from("女"), String::from("Nouns"));
+    remove_group_vocab(String::from("下さい"), String::from("Nouns"));
 }

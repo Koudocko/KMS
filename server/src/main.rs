@@ -288,18 +288,57 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         }
         "DELETE_GROUP_KANJI" =>{
             if let Some(user) = &stream.1{
-                match delete_group(&user, request.payload){
-                    Err("INVALID_USER") =>{
+                match delete_group_kanji(&user, request.payload){
+                    Err("INVALID_KANJI") =>{
                         header = String::from("BAD");
-                        json!({ "error": "User has been invalidated!" }).to_string()
+                        json!({ "error": "Kanji selected does not exist! Pick a valid Kanji..." }).to_string()
                     }
                     Err("INVALID_GROUP") =>{
                         header = String::from("BAD");
-                        json!({ "error": "Group selected does not exist! Pick a valid gropu..." }).to_string()
+                        json!({ "error": "Group selected does not exist! Pick a valid group..." }).to_string()
                     }
                     Err("INVALID_FORMAT") =>{
                         header = String::from("BAD");
                         json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    Err("ALREADY_REMOVED") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Kanji already removed from group!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
+        "DELETE_GROUP_VOCAB" =>{
+            if let Some(user) = &stream.1{
+                match delete_group_vocab(&user, request.payload){
+                    Err("INVALID_VOCAB") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Vocab selected does not exist! Pick a valid vocab..." }).to_string()
+                    }
+                    Err("INVALID_GROUP") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Group selected does not exist! Pick a valid group..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    Err("ALREADY_REMOVED") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Vocab already removed from group!" }).to_string()
+                    }
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
                     }
                     _ => String::new(),
                 }
