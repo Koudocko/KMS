@@ -23,11 +23,11 @@ static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
 
-fn remove_group(group: String){
+fn remove_group(group_title: String, group_vocab: bool){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_GROUP"), 
-            payload: json!({ "group": group }).to_string()
+            payload: json!({ "group_title": group_title, "group_vocab": group_vocab }).to_string()
         }
     ).unwrap();
 
@@ -41,11 +41,11 @@ fn remove_group(group: String){
     }
 }
 
-fn remove_vocab(vocab: String){
+fn remove_vocab(vocab_phrase: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_VOCAB"), 
-            payload: json!({ "vocab": vocab }).to_string()
+            payload: json!({ "vocab_phrase": vocab_phrase }).to_string()
         }
     ).unwrap();
 
@@ -59,11 +59,11 @@ fn remove_vocab(vocab: String){
     }
 }
 
-fn remove_kanji(kanji: String){
+fn remove_kanji(kanji_symbol: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_KANJI"), 
-            payload: json!({ "kanji": kanji }).to_string()
+            payload: json!({ "kanji_symbol": kanji_symbol }).to_string()
         }
     ).unwrap();
 
@@ -95,11 +95,11 @@ fn remove_user(){
     }
 }
 
-fn add_group_vocab(vocab: String, group: String){
+fn add_group_vocab(vocab_phrase: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP_VOCAB"), 
-            payload: json!({ "vocab": vocab, "group": group }).to_string()
+            payload: json!({ "vocab_phrase": vocab_phrase, "group_title": group_title }).to_string()
         }
     ).unwrap();
 
@@ -113,11 +113,11 @@ fn add_group_vocab(vocab: String, group: String){
     }
 }
 
-fn add_group_kanji(kanji: String, group: String){
+fn add_group_kanji(kanji_symbol: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP_KANJI"), 
-            payload: json!({ "kanji": kanji, "group": group }).to_string()
+            payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
         }
     ).unwrap();
 
@@ -131,14 +131,14 @@ fn add_group_kanji(kanji: String, group: String){
     }
 }
 
-fn add_group(title: String, colour: Option<String>, vocab: bool){
+fn add_group(group_title: String, group_colour: Option<String>, group_vocab: bool){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP"), 
             payload: serde_json::to_string(&NewGroup{
-                title,
-                colour,
-                vocab,
+                title: group_title,
+                colour: group_colour,
+                vocab: group_vocab,
                 user_id: 0,
             }).unwrap()
         }
@@ -154,15 +154,15 @@ fn add_group(title: String, colour: Option<String>, vocab: bool){
     }
 }
 
-fn add_vocab(phrase: String, meaning: String, reading: Vec<Option<String>>, description: Option<String>){
+fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Option<String>>, vocab_description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_VOCAB"), 
             payload: serde_json::to_string(&NewVocab{
-                phrase,
-                meaning,
-                reading,
-                description,
+                phrase: vocab_phrase,
+                meaning: vocab_meaning,
+                reading: vocab_reading,
+                description: vocab_description,
                 kanji_refs: Vec::new(),
                 user_id: 0,
                 group_id: None,
@@ -180,16 +180,16 @@ fn add_vocab(phrase: String, meaning: String, reading: Vec<Option<String>>, desc
     }
 }
 
-fn add_kanji(symbol: String, meaning: String, onyomi: Vec<Option<String>>, kunyomi: Vec<Option<String>>, description: Option<String>){
+fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Option<String>>, kanji_kunyomi: Vec<Option<String>>, kanji_description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_KANJI"), 
             payload: serde_json::to_string(&NewKanji{
-                symbol,
-                meaning,
-                onyomi,
-                kunyomi,
-                description,
+                symbol: kanji_symbol,
+                meaning: kanji_meaning,
+                onyomi: kanji_onyomi,
+                kunyomi: kanji_kunyomi,
+                description: kanji_description,
                 vocab_refs: Vec::new(),
                 user_id: 0,
                 group_id: None,
@@ -207,11 +207,11 @@ fn add_kanji(symbol: String, meaning: String, onyomi: Vec<Option<String>>, kunyo
     }
 }
 
-fn login_user(username: String, password: String){
+fn login_user(user_username: String, user_password: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("GET_ACCOUNT_KEYS"), 
-            payload: json!({ "username": username }).to_string()
+            payload: json!({ "user_username": user_username }).to_string()
         }
     ).unwrap();
 
@@ -232,14 +232,14 @@ fn login_user(username: String, password: String){
             pbkdf2::PBKDF2_HMAC_SHA512,
             n_iter,
             &salt_key,
-            password.as_bytes(),
+            user_password.as_bytes(),
             &mut pbkdf2_hash,
         );
 
         write_stream(&mut *STREAM.lock().unwrap(), 
             Package { 
                 header: String::from("VALIDATE_KEY"), 
-                payload: json!({ "username": username, "hash": pbkdf2_hash.to_vec() }).to_string()
+                payload: json!({ "user_username": user_username, "user_hash": pbkdf2_hash.to_vec() }).to_string()
             }
         ).unwrap();
 
@@ -256,8 +256,8 @@ fn login_user(username: String, password: String){
     }
 }
 
-fn add_user(username: String, password: (String, String)){
-    if password.0 == password.1{
+fn add_user(user_username: String, user_password: (String, String)){
+    if user_password.0 == user_password.1{
         const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
         let n_iter = NonZeroU32::new(100_000).unwrap();
         let rng = rand::SystemRandom::new();
@@ -270,12 +270,12 @@ fn add_user(username: String, password: (String, String)){
             pbkdf2::PBKDF2_HMAC_SHA512,
             n_iter,
             &salt_key,
-            password.0.as_bytes(),
+            user_password.0.as_bytes(),
             &mut pbkdf2_hash,
         );
         
         let account = NewUser{ 
-            username: username.to_owned(), 
+            username: user_username.to_owned(), 
             hash: pbkdf2_hash.to_vec(), 
             salt: salt_key.to_vec(),
         };

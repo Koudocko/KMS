@@ -75,8 +75,8 @@ pub fn get_account_keys(payload: String)-> Eval<String>{
     let connection = &mut establish_connection();
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(payload) = payload["username"].as_str(){
-            if let Ok(user) = users::table.filter(users::username.eq(payload))
+        if let Some(user_username) = payload["user_username"].as_str(){
+            if let Ok(user) = users::table.filter(users::username.eq(user_username))
                 .first::<User>(connection){
                 return Ok(json!({ "salt": user.salt }).to_string());
             }
@@ -92,7 +92,7 @@ pub fn validate_key(payload: String)-> Eval<(User, bool)>{
     let connection = &mut establish_connection();
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(user_hash) = payload["hash"].as_array(){
+        if let Some(user_hash) = payload["user_hash"].as_array(){
             let user_hash = user_hash.into_iter().map(|byte|{
                 if let Some(byte) = byte.as_u64(){
                     if let Ok(byte) = u8::try_from(byte){
@@ -103,7 +103,7 @@ pub fn validate_key(payload: String)-> Eval<(User, bool)>{
                 0
             }).collect::<Vec<u8>>();
 
-            if let Some(user_username) = payload["username"].as_str(){
+            if let Some(user_username) = payload["user_username"].as_str(){
                 if let Ok(user) = users::table.filter(users::username.eq(user_username))
                     .first::<User>(connection){
                     let mut idx = 0;
@@ -255,8 +255,8 @@ pub fn create_group_kanji(user: &User, payload: String)-> Eval<()>{
     }
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(group_title) = payload["group"].as_str(){
-            if let Some(kanji_symbol) = payload["kanji"].as_str(){
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(kanji_symbol) = payload["kanji_symbol"].as_str(){
                 if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
                     .filter(groups::user_id.eq(user.id))
                     .filter(groups::vocab.eq(false))
@@ -297,8 +297,8 @@ pub fn create_group_vocab(user: &User, payload: String)-> Eval<()>{
     }
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(group_title) = payload["group"].as_str(){
-            if let Some(vocab_phrase) = payload["vocab"].as_str(){
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(vocab_phrase) = payload["vocab_phrase"].as_str(){
                 if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
                     .filter(groups::user_id.eq(user.id))
                     .filter(groups::vocab.eq(true))
@@ -378,7 +378,7 @@ pub fn delete_kanji(user: &User, payload: String)-> Eval<()>{
     }
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(kanji_symbol) = payload["kanji"].as_str(){
+        if let Some(kanji_symbol) = payload["kanji_symbol"].as_str(){
             if let Ok(user_kanji) = kanji::table.filter(kanji::symbol.eq(kanji_symbol))
                 .filter(kanji::user_id.eq(user.id))
                 .first::<Kanji>(connection){
@@ -405,7 +405,7 @@ pub fn delete_vocab(user: &User, payload: String)-> Eval<()>{
     }
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(vocab_phrase) = payload["vocab"].as_str(){
+        if let Some(vocab_phrase) = payload["vocab_phrase"].as_str(){
             if let Ok(user_vocab) = vocab::table.filter(vocab::phrase.eq(vocab_phrase))
                 .filter(vocab::user_id.eq(user.id))
                 .first::<Vocab>(connection){
@@ -432,39 +432,42 @@ pub fn delete_group(user: &User, payload: String)-> Eval<()>{
     }
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
-        if let Some(group_title) = payload["group"].as_str(){
-            if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
-                .filter(groups::user_id.eq(user.id))
-                .first::<Group>(connection){
-                if user_group.vocab{
-                    for vocab in Vocab::belonging_to(&user_group)
-                        .load::<Vocab>(connection)
-                        .unwrap(){
-                        diesel::update(&vocab)
-                            .set(vocab::group_id.eq(None::<i32>))
-                            .execute(connection)
-                            .is_ok();
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(group_vocab) = payload["group_vocab"].as_bool(){
+                if let Ok(user_group) = groups::table.filter(groups::title.eq(group_title))
+                    .filter(groups::user_id.eq(user.id))
+                    .filter(groups::vocab.eq(group_vocab))
+                    .first::<Group>(connection){
+                    if group_vocab{
+                        for vocab in Vocab::belonging_to(&user_group)
+                            .load::<Vocab>(connection)
+                            .unwrap(){
+                            diesel::update(&vocab)
+                                .set(vocab::group_id.eq(None::<i32>))
+                                .execute(connection)
+                                .is_ok();
+                        }
                     }
-                }
-                else{
-                    for kanji in Kanji::belonging_to(&user_group)
-                        .load::<Kanji>(connection)
-                        .unwrap(){
-                        diesel::update(&kanji)
-                            .set(kanji::group_id.eq(None::<i32>))
-                            .execute(connection)
-                            .is_ok();
+                    else{
+                        for kanji in Kanji::belonging_to(&user_group)
+                            .load::<Kanji>(connection)
+                            .unwrap(){
+                            diesel::update(&kanji)
+                                .set(kanji::group_id.eq(None::<i32>))
+                                .execute(connection)
+                                .is_ok();
+                        }
                     }
+
+                    diesel::delete(&user_group)
+                        .execute(connection)
+                        .is_ok();
+
+                    return Ok(());
                 }
 
-                diesel::delete(&user_group)
-                    .execute(connection)
-                    .is_ok();
-
-                return Ok(());
+                return Err("INVALID_GROUP");
             }
-
-            return Err("INVALID_GROUP");
         }
     }
 
