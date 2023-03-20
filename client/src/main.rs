@@ -308,8 +308,10 @@ fn main(){
     // add_kanji(String::from("女"), String::from("Woman"), vec![Some(String::from("じょ"))], vec![Some(String::from("おんな"))], Some(String::from("Jolyne the woman.")));
     // add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
     // add_vocab(String::from("下さい"), String::from("Please"), vec![Some(String::from("ください"))], Some(String::from("Kudos, you got it correct now please leave.")));
-    add_group_kanji(String::from("女"), String::from("Nouns"));
-    add_group_vocab(String::from("下さい"), String::from("Nouns"));
+    // add_group_kanji(String::from("女"), String::from("Nouns"));
+    // add_group_vocab(String::from("下さい"), String::from("Nouns"));
     // remove_kanji(String::from("女"));
     // remove_vocab(String::from("下さい"));
+    // remove_group(String::from("Nouns"), false);
+    // remove_user();
 }

@@ -286,6 +286,29 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
             }
         }
+        "DELETE_GROUP_KANJI" =>{
+            if let Some(user) = &stream.1{
+                match delete_group(&user, request.payload){
+                    Err("INVALID_USER") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "User has been invalidated!" }).to_string()
+                    }
+                    Err("INVALID_GROUP") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Group selected does not exist! Pick a valid gropu..." }).to_string()
+                    }
+                    Err("INVALID_FORMAT") =>{
+                        header = String::from("BAD");
+                        json!({ "error": "Request body format is ill-formed!" }).to_string()
+                    }
+                    _ => String::new(),
+                }
+            }
+            else{
+                header = String::from("BAD");
+                json!({ "error": "Unverified request! Login to a valid account to make this request..." }).to_string()
+            }
+        }
         _ =>{
             header = String::from("BAD");
             json!({ "error": "Invalid request header!" }).to_string()
@@ -352,4 +375,3 @@ fn main() {
         }
     }
 }
-

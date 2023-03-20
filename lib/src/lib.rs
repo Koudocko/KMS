@@ -473,3 +473,87 @@ pub fn delete_group(user: &User, payload: String)-> Eval<()>{
 
     Err("INVALID_FORMAT")
 }
+
+pub fn delete_group_kanji(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(kanji_symbol) = payload["kanji_symbol"].as_str(){
+                if groups::table.filter(groups::title.eq(group_title))
+                    .filter(groups::user_id.eq(user.id))
+                    .filter(groups::vocab.eq(false))
+                    .first::<Group>(connection).is_ok(){
+                    if let Ok(user_kanji) = kanji::table.filter(kanji::symbol.eq(kanji_symbol))
+                        .filter(kanji::user_id.eq(user.id))
+                        .first::<Kanji>(connection){
+
+                        if user_kanji.group_id.is_some(){
+                            diesel::update(&user_kanji)
+                                .set(kanji::group_id.eq(None::<i32>))
+                                .execute(connection)
+                                .is_ok();
+
+                            return Ok(());
+                        }
+
+                        return Err("ALREADY_REMOVED");
+                    }
+
+                    return Err("INVALID_KANJI")
+                }
+
+                return Err("INVALID_GROUP")
+            }
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
+pub fn delete_group_vocab(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(vocab_phrase) = payload["vocab_phrase"].as_str(){
+                if groups::table.filter(groups::title.eq(group_title))
+                    .filter(groups::user_id.eq(user.id))
+                    .filter(groups::vocab.eq(true))
+                    .first::<Group>(connection).is_ok(){
+                    if let Ok(user_vocab) = vocab::table.filter(vocab::phrase.eq(vocab_phrase))
+                        .filter(vocab::user_id.eq(user.id))
+                        .first::<Vocab>(connection){
+
+                        if user_vocab.group_id.is_some(){
+                            diesel::update(&user_vocab)
+                                .set(vocab::group_id.eq(None::<i32>))
+                                .execute(connection)
+                                .is_ok();
+
+                            return Ok(());
+                        }
+
+                        return Err("ALREADY_REMOVED");
+                    }
+
+                    return Err("INVALID_VOCAB")
+                }
+
+                return Err("INVALID_GROUP")
+            }
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
