@@ -1,13 +1,14 @@
 use std::{
     net::{TcpListener, TcpStream},
     io::prelude::*,
-    sync::{Mutex, Arc},
-    thread, error::Error, fs::{OpenOptions, File},
+    sync::{Mutex, Arc, mpsc::channel},
+    thread::{self, Thread}, error::Error, fs::{OpenOptions, File}, collections::HashMap,
 };
 use serde_json::json;
 use lib::*;
 use lib::models::User;
 use chrono::Local;
+use threadpool::ThreadPool;
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
@@ -365,25 +366,53 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
     Ok(())
 }
 
-fn check_connections(streams: Arc<Mutex<Vec<(TcpStream, Option<User>)>>>, file: Arc<Mutex<File>>){
+fn check_connections(streams: Arc<Mutex<Vec<Arc<Mutex<(TcpStream, Option<User>)>>>>>, file: Arc<Mutex<File>>){
+    let pool = Arc::new(ThreadPool::new(7));
+    let (tx, rx) = channel();
+
     loop{
-        streams.lock().unwrap().retain_mut(|stream|{
-            let mut buf = [0u8];
-            stream.0.set_nonblocking(true).unwrap();
-            if let Ok(peeked) = stream.0.peek(&mut buf){
-                if peeked != 0{
-                    if handle_connection(stream, &file).is_err(){
-                        println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
-                            stream.0.peer_addr().unwrap().to_string(), 
-                            stream.1.is_some());
-                        stream.0.shutdown(std::net::Shutdown::Both).unwrap();
-                        return false;
+        let mut mutex_handle = streams.lock().unwrap();
+        let streams_len = mutex_handle.len();
+
+        for (idx, stream) in mutex_handle.iter_mut().enumerate(){
+            let tx = tx.clone();
+            let file = Arc::clone(&file);
+            let stream = Arc::clone(&stream);
+            
+            pool.execute(move ||{
+                let mut stream = stream.lock().unwrap();
+                let mut buf = [0u8];
+                stream.0.set_nonblocking(true).unwrap();
+
+                if let Ok(peeked) = stream.0.peek(&mut buf){
+                    if peeked != 0{
+                        if handle_connection(&mut (*stream), &file).is_err(){
+                            println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
+                                stream.0.peer_addr().unwrap().to_string(), 
+                                stream.1.is_some());
+
+                            stream.0.shutdown(std::net::Shutdown::Both).unwrap();
+                            tx.send(Some(idx)).unwrap();
+                            return;
+                        }
                     }
                 }
-            }
 
-            true
-        });
+                tx.send(None).unwrap();
+            });
+        }
+
+        let mut broken_connections = Vec::new();
+        for _ in 0..streams_len{
+            broken_connections.push(rx.recv().unwrap());
+        }
+        broken_connections.sort();
+
+        for broken_connection in broken_connections.into_iter().rev(){
+            if let Some(broken_connection) = broken_connection{
+                mutex_handle.remove(broken_connection);
+            }
+        }
     }
 }
 
@@ -407,7 +436,7 @@ fn main() {
         if let Ok(stream) = stream{
             log_activity(&file, format!("CONNECTION ESTABLISHED || With Address: {};", 
                 stream.peer_addr().unwrap().to_string()));
-            streams.lock().unwrap().push((stream, None));
+            streams.lock().unwrap().push(Arc::new(Mutex::new((stream, None))));
         }
         else{
             println!("FAILED TO ESTABLISH CONNECTION WITH CLIENT!");

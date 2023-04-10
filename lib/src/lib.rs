@@ -1,12 +1,12 @@
 use serde::{Serialize, Deserialize};
-use schema::{*, groups::user_id};
+use schema::*;
 use std::{
     io::{prelude::*, BufReader, self},
-    net::TcpStream,
+    net::TcpStream, any::Any,
 };
 use diesel::{
     pg::PgConnection,
-    prelude::*,
+    prelude::*, sql_types::Integer,
 };
 use models::*;
 use serde_json::{json, Value};
@@ -551,6 +551,60 @@ pub fn delete_group_vocab(user: &User, payload: String)-> Eval<()>{
                 }
 
                 return Err("INVALID_GROUP")
+            }
+        }
+    }
+
+    Err("INVALID_FORMAT")
+}
+
+pub fn edit_kanji_group(user: &User, payload: String)-> Eval<()>{
+    let connection = &mut establish_connection();
+
+    if users::table.find(user.id)
+        .first::<User>(connection).is_err(){
+        return Err("INVALID_USER")
+    }
+
+    if let Ok(payload) = serde_json::from_str::<Value>(&payload){
+        if let Some(group_title) = payload["group_title"].as_str(){
+            if let Some(group_colour) = payload["group_colour"].as_str(){
+                if let Some(members_removed) = payload["members_removed"].as_array(){
+                    if Regex::new(r"^#([0-9A-Fa-f]{6})$")
+                        .unwrap()
+                        .is_match(group_colour){
+                        if groups::table.filter(groups::title.eq(group_title))
+                            .filter(groups::user_id.eq(user.id))
+                            .filter(groups::vocab.eq(false))
+                            .first::<Group>(connection).is_err(){
+
+                            let mut v = Vec::new();
+                            if !members_removed.into_iter().any(|x|{
+                                if let Some(member_removed) = x.as_str(){
+                                    v.push(member_removed);
+                                    return false
+                                }
+
+                                true
+                            }){
+                                for x in v{
+                                    diesel::update(
+                                            kanji::table.filter(kanji::user_id.eq(user.id))
+                                            .filter(kanji::symbol.eq(x)))
+                                        .set(kanji::group_id.eq(None::<i32>))
+                                        .execute(connection)
+                                        .is_ok();
+                                }
+                            }
+
+                            return Err("INVALID_FORMAT");
+                        }
+
+                        return Err("GROUP_EXISTS");
+                    }
+                                
+                    return Err("INVALID_HEXCODE");
+                }
             }
         }
     }

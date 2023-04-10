@@ -1,8 +1,9 @@
+use std::hash::{Hash, Hasher};
 use serde::{Serialize, Deserialize};
 use diesel::prelude::*;
 use crate::schema::*;
 
-#[derive(Identifiable, Queryable, Clone)]
+#[derive(Identifiable, Queryable, Clone, Default)]
 #[diesel(table_name = users)]
 pub struct User{
     pub id: i32,
@@ -10,6 +11,19 @@ pub struct User{
     pub hash: Vec<u8>,
     pub salt: Vec<u8>,
 }
+
+impl Hash for User{
+    fn hash<H: Hasher>(&self, state: &mut H){
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for User{
+    fn eq(&self, other: &User)-> bool{
+        self.id == other.id
+    }
+}
+impl Eq for User{}
 
 #[derive(Insertable, Serialize, Deserialize)]
 #[diesel(table_name = users)]
