@@ -2,7 +2,7 @@ use std::{
     net::{TcpListener, TcpStream},
     io::prelude::*,
     sync::{Mutex, Arc, mpsc::channel},
-    thread::{self, Thread}, error::Error, fs::{OpenOptions, File}, collections::HashMap,
+    thread, error::Error, fs::{OpenOptions, File}, collections::HashMap, time::Duration,
 };
 use serde_json::json;
 use lib::*;
@@ -19,15 +19,16 @@ fn log_activity(file: &Arc<Mutex<File>>, msg: String){
     println!("{time} - {msg}\n");
 }
 
-fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<File>>)-> Result<(), Box<dyn Error>>{
-    stream.0.set_nonblocking(false)?;
-    let request = read_stream(&mut stream.0)?;
+fn handle_connection(stream: &mut TcpStream, user: &Option<User>, file: &Arc<Mutex<File>>)-> Result<Option<User>, Box<dyn Error>>{
+    stream.set_nonblocking(false)?;
+    let request = read_stream(stream)?;
     log_activity(file, format!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", 
-            stream.0.peer_addr()?.to_string(), 
-            stream.1.is_some(), 
+            stream.peer_addr()?.to_string(), 
+            user.is_some(), 
             request.header, 
             request.payload));
 
+    let mut new_user = user.clone();
     let mut header = String::from("GOOD");
     let payload = match request.header.as_str(){
         "GET_ACCOUNT_KEYS" =>{
@@ -47,14 +48,8 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
         "VALIDATE_KEY" =>{
             match validate_key(request.payload){
                 Ok(verify) =>{
-                    if !verify.1{
-                        header = String::from("BAD");
-                        json!({ "error": "Password is invalid! Please re-enter your password..." }).to_string()
-                    }
-                    else{
-                        stream.1 = Some(verify.0.clone());
-                        String::new()
-                    }
+                    new_user = Some(verify);
+                    String::new()
                 }
                 Err("INVALID_USER") =>{
                     header = String::from("BAD");
@@ -63,6 +58,10 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
                 Err("INVALID_FORMAT") =>{
                     header = String::from("BAD");
                     json!({ "error": "Request body format is ill-formed!" }).to_string()
+                }
+                Err("INVALID_PASSWORD") =>{
+                    header = String::from("BAD");
+                    json!({ "error": "Password is invalid! Please re-enter your password..." }).to_string()
                 }
                 _ => String::new(),
             }
@@ -77,7 +76,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "CREATE_KANJI" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match create_kanji(&user, request.payload){
                     Err("KANJI_EXISTS") =>{
                         header = String::from("BAD");
@@ -96,7 +95,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "CREATE_VOCAB" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match create_vocab(&user, request.payload){
                     Err("VOCAB_EXISTS") =>{
                         header = String::from("BAD");
@@ -115,7 +114,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "CREATE_GROUP" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match create_group(&user, request.payload){
                     Err("INVALID_FORMAT") =>{
                         header = String::from("BAD");
@@ -142,7 +141,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "CREATE_GROUP_KANJI" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match create_group_kanji(&user, request.payload){
                     Err("INVALID_KANJI") =>{
                         header = String::from("BAD");
@@ -173,7 +172,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "CREATE_GROUP_VOCAB" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match create_group_vocab(&user, request.payload){
                     Err("INVALID_VOCAB") =>{
                         header = String::from("BAD");
@@ -204,7 +203,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_USER" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_user(&user){
                     Err("INVALID_USER") =>{
                         header = String::from("BAD");
@@ -219,7 +218,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_KANJI" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_kanji(&user, request.payload){
                     Err("INVALID_USER") =>{
                         header = String::from("BAD");
@@ -242,7 +241,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_VOCAB" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_vocab(&user, request.payload){
                     Err("INVALID_USER") =>{
                         header = String::from("BAD");
@@ -265,7 +264,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_GROUP" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_group(&user, request.payload){
                     Err("INVALID_USER") =>{
                         header = String::from("BAD");
@@ -288,7 +287,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_GROUP_KANJI" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_group_kanji(&user, request.payload){
                     Err("INVALID_KANJI") =>{
                         header = String::from("BAD");
@@ -319,7 +318,7 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
             }
         }
         "DELETE_GROUP_VOCAB" =>{
-            if let Some(user) = &stream.1{
+            if let Some(user) = user{
                 match delete_group_vocab(&user, request.payload){
                     Err("INVALID_VOCAB") =>{
                         header = String::from("BAD");
@@ -357,60 +356,89 @@ fn handle_connection(stream: &mut (TcpStream, Option<User>), file: &Arc<Mutex<Fi
 
     let outgoing = Package{ header, payload };
     log_activity(&file, format!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", 
-            stream.0.peer_addr()?.to_string(), 
-            stream.1.is_some(), 
+            stream.peer_addr()?.to_string(), 
+            new_user.is_some(), 
             outgoing.header, 
             outgoing.payload));
-    write_stream(&mut stream.0, outgoing)?;
+    write_stream(stream, outgoing)?;
 
-    Ok(())
+    Ok(new_user)
 }
 
-fn check_connections(streams: Arc<Mutex<Vec<Arc<Mutex<(TcpStream, Option<User>)>>>>>, file: Arc<Mutex<File>>){
+fn check_connections(streams: Arc<Mutex<HashMap<Option<User>, Vec<Arc<Mutex<TcpStream>>>>>>, file: Arc<Mutex<File>>){
     let pool = Arc::new(ThreadPool::new(7));
-    let (tx, rx) = channel();
+    let (tx_connection, rx_connection) = channel();
 
     loop{
         let mut mutex_handle = streams.lock().unwrap();
         let streams_len = mutex_handle.len();
 
-        for (idx, stream) in mutex_handle.iter_mut().enumerate(){
-            let tx = tx.clone();
-            let file = Arc::clone(&file);
-            let stream = Arc::clone(&stream);
-            
-            pool.execute(move ||{
-                let mut stream = stream.lock().unwrap();
-                let mut buf = [0u8];
-                stream.0.set_nonblocking(true).unwrap();
+        for (user, streams) in mutex_handle.iter_mut(){
+            let user = Arc::new(user.clone());
 
-                if let Ok(peeked) = stream.0.peek(&mut buf){
-                    if peeked != 0{
-                        if handle_connection(&mut (*stream), &file).is_err(){
-                            println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
-                                stream.0.peer_addr().unwrap().to_string(), 
-                                stream.1.is_some());
+            for (idx, stream) in streams.iter_mut().enumerate(){
+                let tx_connection = tx_connection.clone();
+                let file = Arc::clone(&file);
+                let stream = Arc::clone(&stream);
+                let user = Arc::clone(&user);
+                
+                pool.execute(move ||{
+                    let mut stream_guard = stream.lock().unwrap();
+                    let mut buf = [0u8];
 
-                            stream.0.shutdown(std::net::Shutdown::Both).unwrap();
-                            tx.send(Some(idx)).unwrap();
-                            return;
+                    stream_guard.set_nonblocking(true).unwrap();
+                    if let Ok(peeked) = stream_guard.peek(&mut buf){
+                        if peeked != 0{
+                            if let Ok(new_user) = handle_connection(&mut (*stream_guard), &user, &file){
+                                if new_user != *user{
+                                    tx_connection.send(Some((((*user).clone(), idx), Some((new_user, Arc::clone(&stream)))))).unwrap();
+                                    return;
+                                }
+                            }
+                            else{
+                                println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
+                                    stream_guard.peer_addr().unwrap().to_string(), 
+                                    user.is_some());
+
+                                stream_guard.shutdown(std::net::Shutdown::Both).unwrap();
+                                tx_connection.send(Some((((*user).clone(), idx), None))).unwrap();
+                            }
                         }
                     }
-                }
 
-                tx.send(None).unwrap();
-            });
+                    tx_connection.send(None).unwrap();
+                });
+            }
         }
 
         let mut broken_connections = Vec::new();
         for _ in 0..streams_len{
-            broken_connections.push(rx.recv().unwrap());
+            broken_connections.push(rx_connection.recv().unwrap());
         }
-        broken_connections.sort();
+
+        let mut broken_connections = broken_connections.into_iter().filter_map(|ele|{
+            if let Some(data) = ele{
+                return Some(data);
+            }
+            None
+        }).collect::<Vec<((Option<User>, usize), Option<(Option<User>, Arc<Mutex<TcpStream>>)>)>>();
+        broken_connections.sort_by_key(|key| key.0.1);
 
         for broken_connection in broken_connections.into_iter().rev(){
-            if let Some(broken_connection) = broken_connection{
-                mutex_handle.remove(broken_connection);
+            if let Some(new_user) = broken_connection.1{
+                if let Some(new_user_connections) = mutex_handle.get_mut(&new_user.0){
+                    new_user_connections.push(new_user.1);
+                }
+                else{
+                    mutex_handle.insert(new_user.0, vec![new_user.1]);
+                }
+            }
+
+            let user_connections = mutex_handle.get_mut(&broken_connection.0.0).unwrap();
+            user_connections.remove(broken_connection.0.1);
+
+            if user_connections.is_empty(){
+                mutex_handle.remove(&broken_connection.0.0);
             }
         }
     }
@@ -424,7 +452,7 @@ fn main() {
         .unwrap()));
 
     let listener = TcpListener::bind(SOCKET).unwrap();
-    let streams = Arc::new(Mutex::new(Vec::new()));
+    let streams = Arc::new(Mutex::new(HashMap::new()));
 
     let stream_handle = Arc::clone(&streams);
     let file_handle = Arc::clone(&file);
@@ -436,7 +464,7 @@ fn main() {
         if let Ok(stream) = stream{
             log_activity(&file, format!("CONNECTION ESTABLISHED || With Address: {};", 
                 stream.peer_addr().unwrap().to_string()));
-            streams.lock().unwrap().push(Arc::new(Mutex::new((stream, None))));
+            streams.lock().unwrap().insert(None, vec![Arc::new(Mutex::new(stream))]);
         }
         else{
             println!("FAILED TO ESTABLISH CONNECTION WITH CLIENT!");

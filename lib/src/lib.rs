@@ -88,7 +88,7 @@ pub fn get_account_keys(payload: String)-> Eval<String>{
     Err("INVALID_FORMAT")
 }
 
-pub fn validate_key(payload: String)-> Eval<(User, bool)>{
+pub fn validate_key(payload: String)-> Eval<User>{
     let connection = &mut establish_connection();
 
     if let Ok(payload) = serde_json::from_str::<Value>(&payload){
@@ -113,7 +113,11 @@ pub fn validate_key(payload: String)-> Eval<(User, bool)>{
                         check
                     });
 
-                    return Ok((user, verified));
+                    if verified{
+                        return Ok(user);
+                    }
+
+                    return Err("INVALID_PASSWORD");
                 }
 
                 return Err("INVALID_USER");
