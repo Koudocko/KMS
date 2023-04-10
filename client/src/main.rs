@@ -374,5 +374,5 @@ fn main(){
     // remove_user();
     // remove_group_kanji(String::from("女"), String::from("Nouns"));
     // remove_group_vocab(String::from("下さい"), String::from("Nouns"));
-    // std::io::stdin().read_line(&mut String::new()).unwrap();
+    std::io::stdin().read_line(&mut String::new()).unwrap();
 }

@@ -386,27 +386,31 @@ fn check_connections(streams: Arc<Mutex<HashMap<Option<User>, Vec<Arc<Mutex<TcpS
                     let mut stream_guard = stream.lock().unwrap();
                     let mut buf = [0u8];
 
-                    stream_guard.set_nonblocking(true).unwrap();
                     if let Ok(peeked) = stream_guard.peek(&mut buf){
                         if peeked != 0{
                             if let Ok(new_user) = handle_connection(&mut (*stream_guard), &user, &file){
                                 if new_user != *user{
                                     tx_connection.send(Some((((*user).clone(), idx), Some((new_user, Arc::clone(&stream)))))).unwrap();
-                                    return;
                                 }
-                            }
-                            else{
-                                println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
-                                    stream_guard.peer_addr().unwrap().to_string(), 
-                                    user.is_some());
+                                else{
+                                    tx_connection.send(None).unwrap();
+                                }
 
-                                stream_guard.shutdown(std::net::Shutdown::Both).unwrap();
-                                tx_connection.send(Some((((*user).clone(), idx), None))).unwrap();
+                                return;
                             }
                         }
                     }
+                    else{
+                        tx_connection.send(None).unwrap();
+                        return;
+                    }
 
-                    tx_connection.send(None).unwrap();
+                    println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
+                        stream_guard.peer_addr().unwrap().to_string(), 
+                        user.is_some());
+                    stream_guard.shutdown(std::net::Shutdown::Both).unwrap();
+
+                    tx_connection.send(Some((((*user).clone(), idx), None))).unwrap();
                 });
             }
         }
@@ -464,7 +468,10 @@ fn main() {
         if let Ok(stream) = stream{
             log_activity(&file, format!("CONNECTION ESTABLISHED || With Address: {};", 
                 stream.peer_addr().unwrap().to_string()));
+
+            stream.set_read_timeout(Some(Duration::from_nanos(1))).unwrap();
             streams.lock().unwrap().insert(None, vec![Arc::new(Mutex::new(stream))]);
+            println!("PUSHED");
         }
         else{
             println!("FAILED TO ESTABLISH CONNECTION WITH CLIENT!");
