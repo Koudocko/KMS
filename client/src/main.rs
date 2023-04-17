@@ -361,8 +361,10 @@ fn add_user(user_username: String, user_password: (String, String)){
 fn main(){
     // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
     // login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
-    login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
-    add_group("Nouns".to_owned(), Some("#FFFFFF".to_owned()), false);
+    loop{
+        login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
+    }
+    // add_group("Nouns".to_owned(), Some("#FFFFFF".to_owned()), false);
     // add_kanji(String::from("女"), String::from("Woman"), vec![Some(String::from("じょ"))], vec![Some(String::from("おんな"))], Some(String::from("Jolyne the woman.")));
     // add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
     // add_vocab(String::from("下さい"), String::from("Please"), vec![Some(String::from("ください"))], Some(String::from("Kudos, you got it correct now please leave.")));
@@ -374,5 +376,4 @@ fn main(){
     // remove_user();
     // remove_group_kanji(String::from("女"), String::from("Nouns"));
     // remove_group_vocab(String::from("下さい"), String::from("Nouns"));
-    std::io::stdin().read_line(&mut String::new()).unwrap();
 }

@@ -1,14 +1,14 @@
 use std::{
-    net::{TcpListener, TcpStream},
-    io::prelude::*,
+    io::{prelude::*, BufReader},
     sync::{Mutex, Arc, mpsc::channel},
-    thread, error::Error, fs::{OpenOptions, File}, collections::HashMap, time::Duration,
+    thread, error::Error, fs::{OpenOptions, File}, collections::HashMap, time::Duration, net::SocketAddr, ops::Index,
 };
 use serde_json::json;
 use lib::*;
 use lib::models::User;
 use chrono::Local;
 use threadpool::ThreadPool;
+use tokio::{net::{TcpStream, TcpListener}, io::{AsyncReadExt, AsyncWriteExt}};
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
@@ -19,17 +19,9 @@ fn log_activity(file: &Arc<Mutex<File>>, msg: String){
     println!("{time} - {msg}\n");
 }
 
-fn handle_connection(stream: &mut TcpStream, user: &Option<User>, file: &Arc<Mutex<File>>)-> Result<Option<User>, Box<dyn Error>>{
-    stream.set_nonblocking(false)?;
-    let request = read_stream(stream)?;
-    log_activity(file, format!("INCOMING REQUEST || From Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", 
-            stream.peer_addr()?.to_string(), 
-            user.is_some(), 
-            request.header, 
-            request.payload));
-
-    let mut new_user = user.clone();
+fn handle_connection(user: &mut Option<User>, request: Package)-> Package{
     let mut header = String::from("GOOD");
+
     let payload = match request.header.as_str(){
         "GET_ACCOUNT_KEYS" =>{
             match get_account_keys(request.payload){
@@ -48,7 +40,7 @@ fn handle_connection(stream: &mut TcpStream, user: &Option<User>, file: &Arc<Mut
         "VALIDATE_KEY" =>{
             match validate_key(request.payload){
                 Ok(verify) =>{
-                    new_user = Some(verify);
+                    *user = Some(verify);
                     String::new()
                 }
                 Err("INVALID_USER") =>{
@@ -354,124 +346,84 @@ fn handle_connection(stream: &mut TcpStream, user: &Option<User>, file: &Arc<Mut
         }
     };
 
-    let outgoing = Package{ header, payload };
-    log_activity(&file, format!("OUTGOING REQUEST || To Address: {}, Verified: {:?}, Header: {}, Payload: {:?};", 
-            stream.peer_addr()?.to_string(), 
-            new_user.is_some(), 
-            outgoing.header, 
-            outgoing.payload));
-    write_stream(stream, outgoing)?;
-
-    Ok(new_user)
+   Package{ header, payload }
 }
 
-fn check_connections(streams: Arc<Mutex<HashMap<Option<User>, Vec<Arc<Mutex<TcpStream>>>>>>, file: Arc<Mutex<File>>){
-    let pool = Arc::new(ThreadPool::new(7));
-    let (tx_connection, rx_connection) = channel();
+async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: Arc<Mutex<File>>){
+    let mut buf = [0_u8; 4096];
+    let mut user = None::<User>;
 
     loop{
-        let mut mutex_handle = streams.lock().unwrap();
-        let streams_len = mutex_handle.len();
-
-        for (user, streams) in mutex_handle.iter_mut(){
-            let user = Arc::new(user.clone());
-
-            for (idx, stream) in streams.iter_mut().enumerate(){
-                let tx_connection = tx_connection.clone();
-                let file = Arc::clone(&file);
-                let stream = Arc::clone(&stream);
-                let user = Arc::clone(&user);
-                
-                pool.execute(move ||{
-                    let mut stream_guard = stream.lock().unwrap();
-                    let mut buf = [0u8];
-
-                    if let Ok(peeked) = stream_guard.peek(&mut buf){
-                        if peeked != 0{
-                            if let Ok(new_user) = handle_connection(&mut (*stream_guard), &user, &file){
-                                if new_user != *user{
-                                    tx_connection.send(Some((((*user).clone(), idx), Some((new_user, Arc::clone(&stream)))))).unwrap();
-                                }
-                                else{
-                                    tx_connection.send(None).unwrap();
-                                }
-
-                                return;
-                            }
-                        }
-                    }
-                    else{
-                        tx_connection.send(None).unwrap();
-                        return;
-                    }
-
-                    println!("CONNECTION TERMINATED || With Address: {}, Verified: {:?};", 
-                        stream_guard.peer_addr().unwrap().to_string(), 
-                        user.is_some());
-                    stream_guard.shutdown(std::net::Shutdown::Both).unwrap();
-
-                    tx_connection.send(Some((((*user).clone(), idx), None))).unwrap();
-                });
+        match stream.read(&mut buf).await{
+            Ok(0) =>{
+                log_activity(&file_handle, format!("CONNECTION TERMINATED NORMALLY || With Address: {}, User: {:?};", 
+                    addr.to_string(),
+                    user));
+                return;
             }
-        }
+            Ok(_) =>{
+                let mut response = Package{
+                    header: String::from("BAD"),
+                    payload: json!({ "error": "Request body format is ill-formed!" }).to_string(),
+                };
 
-        let mut broken_connections = Vec::new();
-        for _ in 0..streams_len{
-            broken_connections.push(rx_connection.recv().unwrap());
-        }
+                if let Some(package_end) = buf.iter().position(|x| *x == '\n' as u8){
+                    if let Ok(request) = serde_json::from_slice::<Package>(&buf[..package_end]){
+                        log_activity(&file_handle, format!("INCOMING REQUEST || From Address: {}, User: {:?}, Header: {}, Payload: {:?};", 
+                            addr.to_string(),
+                            user, 
+                            request.header, 
+                            request.payload));
+                        response = handle_connection(&mut user, request);
+                    }
+                }
 
-        let mut broken_connections = broken_connections.into_iter().filter_map(|ele|{
-            if let Some(data) = ele{
-                return Some(data);
-            }
-            None
-        }).collect::<Vec<((Option<User>, usize), Option<(Option<User>, Arc<Mutex<TcpStream>>)>)>>();
-        broken_connections.sort_by_key(|key| key.0.1);
+                let mut response_bytes = serde_json::to_vec(&response).unwrap();
+                response_bytes.push('\n' as u8);
 
-        for broken_connection in broken_connections.into_iter().rev(){
-            if let Some(new_user) = broken_connection.1{
-                if let Some(new_user_connections) = mutex_handle.get_mut(&new_user.0){
-                    new_user_connections.push(new_user.1);
+                if stream.write_all(&response_bytes).await.is_ok(){
+                    log_activity(&file_handle, format!("OUTGOING RESPONSE SENT || To Address: {}, User: {:?}, Header: {}, Payload: {:?};", 
+                        addr.to_string(),
+                        user,
+                        response.header, 
+                        response.payload));
                 }
                 else{
-                    mutex_handle.insert(new_user.0, vec![new_user.1]);
+                    log_activity(&file_handle, format!("OUTGOING RESPONSE FAILED || To Address: {}, User: {:?}, Header: {}, Payload: {:?};", 
+                        addr.to_string(),
+                        user,
+                        response.header, 
+                        response.payload));
                 }
             }
-
-            let user_connections = mutex_handle.get_mut(&broken_connection.0.0).unwrap();
-            user_connections.remove(broken_connection.0.1);
-
-            if user_connections.is_empty(){
-                mutex_handle.remove(&broken_connection.0.0);
+            Err(_) =>{
+                log_activity(&file_handle, format!("CONNECTION TERMINATED ABNORMALLY || With Address: {}, User: {:?};", 
+                    addr.to_string(),
+                    user));
+                return;
             }
         }
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main(){
     let file = Arc::new(Mutex::new(OpenOptions::new()
         .create(true)
         .append(true)
         .open("/var/log/kms.log")
         .unwrap()));
 
-    let listener = TcpListener::bind(SOCKET).unwrap();
-    let streams = Arc::new(Mutex::new(HashMap::new()));
+    let listener = TcpListener::bind(SOCKET).await.unwrap();
 
-    let stream_handle = Arc::clone(&streams);
-    let file_handle = Arc::clone(&file);
-    thread::spawn(||{
-        check_connections(stream_handle, file_handle);
-    });
 
-    for stream in listener.incoming(){
-        if let Ok(stream) = stream{
+    loop{
+        let file_handle = Arc::clone(&file);
+
+        if let Ok((stream, addr)) = listener.accept().await{
             log_activity(&file, format!("CONNECTION ESTABLISHED || With Address: {};", 
                 stream.peer_addr().unwrap().to_string()));
-
-            stream.set_read_timeout(Some(Duration::from_nanos(1))).unwrap();
-            streams.lock().unwrap().insert(None, vec![Arc::new(Mutex::new(stream))]);
-            println!("PUSHED");
+            tokio::spawn(check_connection(stream, addr, file_handle));
         }
         else{
             println!("FAILED TO ESTABLISH CONNECTION WITH CLIENT!");

@@ -1,9 +1,9 @@
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, fmt::Debug};
 use serde::{Serialize, Deserialize};
 use diesel::prelude::*;
 use crate::schema::*;
 
-#[derive(Identifiable, Queryable, Clone, Debug)]
+#[derive(Identifiable, Queryable, Clone)]
 #[diesel(table_name = users)]
 pub struct User{
     pub id: i32,
@@ -24,6 +24,12 @@ impl PartialEq for User{
     }
 }
 impl Eq for User{}
+
+impl Debug for User{
+   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.username) 
+   } 
+}
 
 #[derive(Insertable, Serialize, Deserialize)]
 #[diesel(table_name = users)]
