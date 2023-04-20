@@ -1,3 +1,14 @@
+use serde::{Serialize, Deserialize};
+use std::{
+    io::{prelude::*, BufReader, self},
+
+    any::Any,
+};
+use std::future::Future;
+use serde_json::{json, Value};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
+use std::error::Error;
+
 use std::collections::HashMap;
 use std::{
     sync::Mutex,
@@ -15,30 +26,83 @@ use tauri::{
     Window,
     Manager
 };
-use serde_json::json;
+use tokio::sync::Mutex as AsyncMutex;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
 // const SOCKET: &str = "als-kou.ddns.net:7878";
 const SOCKET: &str = "127.0.0.1:7878";
-static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
-    Mutex::new(TcpStream::connect(SOCKET).unwrap())
-});
+pub static mut STREAM: AsyncMutex<Option<TcpStream>> = AsyncMutex::new(None);
 
-static PACKAGES: Mutex<(i32, Vec<Package>)> = Mutex::new((0, Vec::new()));
+pub static mut PACKAGES: Mutex<(u8, HashMap<u8, Package>)> = Mutex::new((0, HashMap::new()));
 
-// fn get_kanji()-> (Option<Group>, Vec<Kanji>){
+struct PackageGet{
+    key: u8
+}
+
+impl Future for PackageGet{
+    type Output = Package;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
+        unsafe{
+            if let Some(value) = PACKAGES.lock().unwrap().1.get(&self.key){
+                return Poll::Ready(*value.to_owned());
+            }
+
+            Poll::Pending
+        }
+    }
+}
+
+pub fn unpack(payload: &str, field: &str)-> Value{
+    serde_json::from_str::<Value>(payload).unwrap()[field].clone()
+}
+
+pub async fn write_stream(header: String, payload: String)-> Result<u8, Box<dyn Error>>{
+    unsafe{
+        if let Some(stream_ref) = &mut *STREAM.lock().await{
+            let mut id_handle = PACKAGES.lock().unwrap();
+            let package = Package{
+                id: id_handle.0,
+                header,
+                payload
+            };
+            id_handle.0 = if let Some(new_id) = id_handle.0.checked_add(1){
+                new_id
+            }
+            else{
+                0
+            };
+
+            let mut buf = serde_json::to_vec(&package).unwrap();
+            buf.push(b'\n');
+            unsafe{
+                stream_ref.write_all(&mut buf).await?;
+            }
+
+            Ok(id_handle.0)
+        }
+        else{
+            Err(Box::new(IoError::new(IoErrorKind::Other, "")))
+        }
+    }
+}
+
+// pub fn get_kanji()-> (Option<Group>, Vec<Kanji>){
     
 // }
 
-fn change_group(group_title: String, group_colour: String, members_removed: Vec<String>){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            id: *CURR_ID.lock().unwrap() += 1,
-            header: String::from("EDIT_GROUP"), 
-            payload: json!({ "group_title": group_title, "group_colour": group_colour, "members_removed": members_removed }).to_string()
-        }
-    ).unwrap();
+#[tauri::command]
+pub async fn change_group(group_title: String, group_colour: String, members_removed: Vec<String>){
+    let request_id = write_stream(
+        String::from("EDIT_GROUP"), 
+        json!({ 
+            "group_title": group_title, 
+            "group_colour": group_colour, 
+            "members_removed": members_removed 
+    }).to_string()).await.unwrap();
 
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    let response = PackageGet{ key: request_id }.await;
     
     if response.header == "GOOD"{
         println!("CHANGED GROUP");
@@ -48,15 +112,16 @@ fn change_group(group_title: String, group_colour: String, members_removed: Vec<
     }
 }
 
-fn remove_group_vocab(vocab_phrase: String, group_title: String){
+#[tauri::command]
+pub async fn remove_group_vocab(vocab_phrase: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_GROUP_VOCAB"), 
-            payload: json!({ "vocab_phrase": vocab_phrase, "group_title": group_title }).to_string()
-        }
-    ).unwrap();
+        String::from("DELETE_GROUP_VOCAB"), 
+        json!({ 
+            "vocab_phrase": vocab_phrase, 
+            "group_title": group_title 
+    }).to_string());
 
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    let response = read_stream(&mut *STREAM.lock().unwrap()).await.unwrap();
     
     if response.header == "GOOD"{
         println!("REMOVED vocab from GROUP");
@@ -66,7 +131,7 @@ fn remove_group_vocab(vocab_phrase: String, group_title: String){
     }
 }
 
-fn remove_group_kanji(kanji_symbol: String, group_title: String){
+pub fn remove_group_kanji(kanji_symbol: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_GROUP_KANJI"), 
@@ -84,7 +149,7 @@ fn remove_group_kanji(kanji_symbol: String, group_title: String){
     }
 }
 
-fn remove_group(group_title: String, group_vocab: bool){
+pub fn remove_group(group_title: String, group_vocab: bool){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_GROUP"), 
@@ -102,7 +167,7 @@ fn remove_group(group_title: String, group_vocab: bool){
     }
 }
 
-fn remove_vocab(vocab_phrase: String){
+pub fn remove_vocab(vocab_phrase: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_VOCAB"), 
@@ -120,7 +185,7 @@ fn remove_vocab(vocab_phrase: String){
     }
 }
 
-fn remove_kanji(kanji_symbol: String){
+pub fn remove_kanji(kanji_symbol: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_KANJI"), 
@@ -138,7 +203,7 @@ fn remove_kanji(kanji_symbol: String){
     }
 }
 
-fn remove_user(){
+pub fn remove_user(){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("DELETE_USER"), 
@@ -156,7 +221,7 @@ fn remove_user(){
     }
 }
 
-fn add_group_vocab(vocab_phrase: String, group_title: String){
+pub fn add_group_vocab(vocab_phrase: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP_VOCAB"), 
@@ -174,7 +239,7 @@ fn add_group_vocab(vocab_phrase: String, group_title: String){
     }
 }
 
-fn add_group_kanji(kanji_symbol: String, group_title: String){
+pub fn add_group_kanji(kanji_symbol: String, group_title: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP_KANJI"), 
@@ -192,7 +257,7 @@ fn add_group_kanji(kanji_symbol: String, group_title: String){
     }
 }
 
-fn add_group(group_title: String, group_colour: Option<String>, group_vocab: bool){
+pub fn add_group(group_title: String, group_colour: Option<String>, group_vocab: bool){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_GROUP"), 
@@ -215,7 +280,7 @@ fn add_group(group_title: String, group_colour: Option<String>, group_vocab: boo
     }
 }
 
-fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Option<String>>, vocab_description: Option<String>){
+pub fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Option<String>>, vocab_description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_VOCAB"), 
@@ -241,7 +306,7 @@ fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Opt
     }
 }
 
-fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Option<String>>, kanji_kunyomi: Vec<Option<String>>, kanji_description: Option<String>){
+pub fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Option<String>>, kanji_kunyomi: Vec<Option<String>>, kanji_description: Option<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("CREATE_KANJI"), 
@@ -268,7 +333,7 @@ fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Opti
     }
 }
 
-fn login_user(user_username: String, user_password: String){
+pub fn login_user(user_username: String, user_password: String){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
             header: String::from("GET_ACCOUNT_KEYS"), 
@@ -317,7 +382,7 @@ fn login_user(user_username: String, user_password: String){
     }
 }
 
-fn add_user(user_username: String, user_password: (String, String)){
+pub fn add_user(user_username: String, user_password: (String, String)){
     if user_password.0 == user_password.1{
         const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
         let n_iter = NonZeroU32::new(100_000).unwrap();
@@ -359,25 +424,4 @@ fn add_user(user_username: String, user_password: (String, String)){
     else{
         println!("ERROR");
     }
-}
-
-#[tokio::main]
-async fn main(){
-    // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
-    // login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
-    loop{
-        login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
-    }
-    // add_group("Nouns".to_owned(), Some("#FFFFFF".to_owned()), false);
-    // add_kanji(String::from("女"), String::from("Woman"), vec![Some(String::from("じょ"))], vec![Some(String::from("おんな"))], Some(String::from("Jolyne the woman.")));
-    // add_kanji(String::from("下"), String::from("Down"), vec![Some(String::from("か")), Some(String::from("げ"))], vec![Some(String::from("した")), Some(String::from("くだ")), Some(String::from("さ")), Some(String::from("お"))], Some(String::from("Below the sh*t under my toe, I look down and see a car and its keys.")));
-    // add_vocab(String::from("下さい"), String::from("Please"), vec![Some(String::from("ください"))], Some(String::from("Kudos, you got it correct now please leave.")));
-    // add_group_kanji(String::from("女"), String::from("Nouns"));
-    // add_group_vocab(String::from("下さい"), String::from("Nouns"));
-    // remove_kanji(String::from("女"));
-    // remove_vocab(String::from("下さい"));
-    // remove_group(String::from("Nouns"), false);
-    // remove_user();
-    // remove_group_kanji(String::from("女"), String::from("Nouns"));
-    // remove_group_vocab(String::from("下さい"), String::from("Nouns"));
 }

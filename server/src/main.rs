@@ -4,13 +4,14 @@ use std::{
     thread, error::Error, fs::{OpenOptions, File}, collections::HashMap, time::Duration, net::SocketAddr, ops::Index,
 };
 use serde_json::json;
-use lib::*;
+use commands::*;
 use lib::models::User;
+use lib::Package;
 use chrono::Local;
 use threadpool::ThreadPool;
 use tokio::{net::{TcpStream, TcpListener}, io::{AsyncReadExt, AsyncWriteExt}};
 
-mod lib;
+mod commands;
 
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
@@ -348,7 +349,7 @@ fn handle_connection(user: &mut Option<User>, request: Package)-> Package{
         }
     };
 
-   Package{ header, payload }
+   Package{ id: request.id, header, payload }
 }
 
 async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: Arc<Mutex<File>>){
@@ -365,6 +366,7 @@ async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: 
             }
             Ok(_) =>{
                 let mut response = Package{
+                    id: -1,
                     header: String::from("BAD"),
                     payload: json!({ "error": "Request body format is ill-formed!" }).to_string(),
                 };

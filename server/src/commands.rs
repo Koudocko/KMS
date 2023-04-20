@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use schema::*;
+use lib::schema::*;
 use std::{
     io::{prelude::*, BufReader, self},
     any::Any,
@@ -8,24 +8,14 @@ use diesel::{
     pg::PgConnection,
     prelude::*, sql_types::Integer,
 };
-use models::*;
+use lib::models::*;
 use serde_json::{json, Value};
 use regex::Regex;
 use tokio::{net::TcpStream, io::{AsyncReadExt, AsyncWriteExt}};
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::error::Error;
 
-pub mod schema;
-pub mod models;
-
 pub type Eval<T> = Result<T, &'static str>;
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Package{
-    pub id: i32,
-    pub header: String,
-    pub payload: String
-}
 
 pub fn establish_connection() -> PgConnection{
     let database_url = "postgres://postgres@localhost/kms";

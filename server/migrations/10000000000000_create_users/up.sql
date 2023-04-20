@@ -1,6 +1,0 @@
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  username TEXT NOT NULL,
-  hash BYTEA NOT NULL,
-  salt BYTEA NOT NULL
-);

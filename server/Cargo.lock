@@ -223,11 +223,21 @@ dependencies = [
  "chrono",
  "diesel",
  "dotenvy",
+ "lib",
  "regex",
  "serde",
  "serde_json",
  "threadpool",
  "tokio",
+]
+
+[[package]]
+name = "lib"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
