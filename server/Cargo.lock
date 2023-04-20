@@ -221,22 +221,13 @@ name = "kms"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "lib",
- "serde",
- "serde_json",
- "threadpool",
- "tokio",
-]
-
-[[package]]
-name = "lib"
-version = "0.1.0"
-dependencies = [
  "diesel",
  "dotenvy",
  "regex",
  "serde",
  "serde_json",
+ "threadpool",
+ "tokio",
 ]
 
 [[package]]

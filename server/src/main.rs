@@ -10,6 +10,8 @@ use chrono::Local;
 use threadpool::ThreadPool;
 use tokio::{net::{TcpStream, TcpListener}, io::{AsyncReadExt, AsyncWriteExt}};
 
+mod lib;
+
 // const SOCKET: &str = "192.168.2.6:7878";
 const SOCKET: &str = "127.0.0.1:7878";
 
@@ -367,7 +369,7 @@ async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: 
                     payload: json!({ "error": "Request body format is ill-formed!" }).to_string(),
                 };
 
-                if let Some(package_end) = buf.iter().position(|x| *x == '\n' as u8){
+                if let Some(package_end) = buf.iter().position(|x| *x == b'\n'){
                     if let Ok(request) = serde_json::from_slice::<Package>(&buf[..package_end]){
                         log_activity(&file_handle, format!("INCOMING REQUEST || From Address: {}, User: {:?}, Header: {}, Payload: {:?};", 
                             addr.to_string(),
@@ -379,7 +381,7 @@ async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: 
                 }
 
                 let mut response_bytes = serde_json::to_vec(&response).unwrap();
-                response_bytes.push('\n' as u8);
+                response_bytes.push(b'\n');
 
                 if stream.write_all(&response_bytes).await.is_ok(){
                     log_activity(&file_handle, format!("OUTGOING RESPONSE SENT || To Address: {}, User: {:?}, Header: {}, Payload: {:?};", 

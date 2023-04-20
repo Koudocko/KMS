@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::{
-    net::TcpStream,
     sync::Mutex,
 };
+use tokio::{net::TcpStream, io::{AsyncReadExt, AsyncWriteExt}};
 use lib::*;
 use lib::models::{NewUser, NewKanji, NewVocab, NewGroup, Group, Kanji};
 use ring::rand::SecureRandom;
@@ -23,6 +23,8 @@ static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
     Mutex::new(TcpStream::connect(SOCKET).unwrap())
 });
 
+static PACKAGES: Mutex<(i32, Vec<Package>)> = Mutex::new((0, Vec::new()));
+
 // fn get_kanji()-> (Option<Group>, Vec<Kanji>){
     
 // }
@@ -30,6 +32,7 @@ static STREAM: Lazy<Mutex<TcpStream>> = Lazy::new(||{
 fn change_group(group_title: String, group_colour: String, members_removed: Vec<String>){
     write_stream(&mut *STREAM.lock().unwrap(), 
         Package { 
+            id: *CURR_ID.lock().unwrap() += 1,
             header: String::from("EDIT_GROUP"), 
             payload: json!({ "group_title": group_title, "group_colour": group_colour, "members_removed": members_removed }).to_string()
         }
@@ -358,7 +361,8 @@ fn add_user(user_username: String, user_password: (String, String)){
     }
 }
 
-fn main(){
+#[tokio::main]
+async fn main(){
     // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
     // login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
     loop{

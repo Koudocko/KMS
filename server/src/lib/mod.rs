@@ -27,30 +27,6 @@ pub struct Package{
     pub payload: String
 }
 
-pub fn unpack(payload: &str, field: &str)-> Value{
-    serde_json::from_str::<Value>(payload).unwrap()[field].clone()
-}
-
-pub async fn write_stream(stream: &mut TcpStream, package: Package)-> Result<(), Box<dyn Error>>{
-    let mut buf = serde_json::to_vec(&package).unwrap();
-    buf.push(b'\n');
-    stream.write_all(&mut buf).await?;
-
-    Ok(())
-}
-
-pub async fn read_stream(stream: &mut TcpStream)-> Result<Package, Box<dyn Error>>{
-    let mut buf = [0_u8; 4096];
-    if stream.read(&mut buf).await? == 0{
-        return Err(Box::new(IoError::new(IoErrorKind::Other, "")));
-    }
-
-    Ok(serde_json::from_slice::<Package>(&buf[..buf.iter()
-        .position(|x| *x == b'\n')
-        .unwrap()
-    ]).unwrap())
-}
-
 pub fn establish_connection() -> PgConnection{
     let database_url = "postgres://postgres@localhost/kms";
 
