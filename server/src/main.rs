@@ -17,9 +17,9 @@ mod commands;
 const SOCKET: &str = "127.0.0.1:7878";
 
 fn log_activity(file: &Arc<Mutex<File>>, msg: String){
-    let time = Local::now().format("[%Y-%m-%d %H:%M:%S]");
-    file.lock().unwrap().write_all(format!("{time} - {msg}\n\n").as_bytes()).unwrap();
-    println!("{time} - {msg}\n");
+    // let time = Local::now().format("[%Y-%m-%d %H:%M:%S]");
+    // file.lock().unwrap().write_all(format!("{time} - {msg}\n\n").as_bytes()).unwrap();
+    // println!("{time} - {msg}\n");
 }
 
 fn handle_connection(user: &mut Option<User>, request: Package)-> Package{
@@ -349,7 +349,7 @@ fn handle_connection(user: &mut Option<User>, request: Package)-> Package{
         }
     };
 
-   Package{ id: request.id, header, payload }
+    Package{ id: request.id, header, payload }
 }
 
 async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: Arc<Mutex<File>>){
@@ -366,7 +366,7 @@ async fn check_connection(mut stream: TcpStream, addr: SocketAddr, file_handle: 
             }
             Ok(_) =>{
                 let mut response = Package{
-                    id: -1,
+                    id: 0,
                     header: String::from("BAD"),
                     payload: json!({ "error": "Request body format is ill-formed!" }).to_string(),
                 };

@@ -23,13 +23,51 @@ use tauri::{
 };
 use serde_json::json;
 use commands::*;
+use tokio::sync::Mutex as AsyncMutex;
 
 mod commands;
 
 #[tokio::main]
 async fn main(){
+    unsafe{
+        if STREAM.is_none(){
+            STREAM = if let Ok(stream) = TcpStream::connect("127.0.0.1:7878").await{
+                Some(AsyncMutex::new(stream))
+            }
+            else{
+                None
+            };
+        }
+    }
+    
+    tokio::spawn(async{
+        unsafe{
+            loop{
+                if let Some(stream_ref) = &mut STREAM{
+                    let mut stream_ref = stream_ref.lock().await;
+                    let mut buf = [0_u8; 4096];
+                     if let Ok(bytes) = stream_ref.read(&mut buf).await{
+                        if bytes == 0{
+                            STREAM = None;
+                        }
+                    }
+                    else{
+                        STREAM = None;
+                    }
+
+                    let package = serde_json::from_slice::<Package>(&buf[..buf.iter()
+                        .position(|x| *x == b'\n')
+                        .unwrap()
+                    ]).unwrap();
+
+                    PACKAGES.lock().unwrap().1.insert(package.id, package);
+                }
+            }
+        }
+    });
+
     // add_user("Joe biden".to_owned(), ("__joebidengaming64___".to_owned(), "__joebidengaming64___".to_owned()));
-    // login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
+    login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned()).await;
     // loop{
     //     login_user("Joe biden".to_owned(), "__joebidengaming64___".to_owned());
     // }
@@ -45,42 +83,46 @@ async fn main(){
     // remove_user();
     // remove_group_kanji(String::from("女"), String::from("Nouns"));
     // remove_group_vocab(String::from("下さい"), String::from("Nouns"));
-    tauri::Builder::default()
-        .setup(|app|{
-            tokio::spawn(async{
-                *STREAM.lock().await = if let Ok(stream) = TcpStream::connect("127.0.0.1:7878").await{
-                    Some(stream)
-                }
-                else{
-                    None
-                };
+    // tauri::Builder::default()
+    //     .setup(|app|{
+    //         tokio::spawn(async{
+    //             unsafe{
+    //                 if STREAM.is_none(){
+    //                     STREAM = if let Ok(stream) = TcpStream::connect("127.0.0.1:7878").await{
+    //                         Some(AsyncMutex::new(stream))
+    //                     }
+    //                     else{
+    //                         None
+    //                     };
+    //                 }
 
-                loop{
-                    let mut stream_handle = STREAM.lock().await;
-                    if let Some(stream_ref) = &mut *stream_handle{
-                        let mut buf = [0_u8; 4096];
-                         if let Ok(bytes) = stream_ref.read(&mut buf).await{
-                            if bytes == 0{
-                                *stream_handle = None;
-                            }
-                        }
-                        else{
-                            *stream_handle = None;
-                        }
+    //                 loop{
+    //                     if let Some(stream_ref) = &mut STREAM{
+    //                         let stream_ref = stream_ref.lock().await;
+    //                         let mut buf = [0_u8; 4096];
+    //                          if let Ok(bytes) = stream_ref.read(&mut buf).await{
+    //                             if bytes == 0{
+    //                                 STREAM = None;
+    //                             }
+    //                         }
+    //                         else{
+    //                             STREAM = None;
+    //                         }
 
-                        let package = serde_json::from_slice::<Package>(&buf[..buf.iter()
-                            .position(|x| *x == b'\n')
-                            .unwrap()
-                        ]).unwrap();
+    //                         let package = serde_json::from_slice::<Package>(&buf[..buf.iter()
+    //                             .position(|x| *x == b'\n')
+    //                             .unwrap()
+    //                         ]).unwrap();
 
-                        PACKAGES.lock().unwrap().1.insert(package.id, package);
-                    }
-                }
-            });
+    //                         PACKAGES.lock().unwrap().1.insert(package.id, package);
+    //                     }
+    //                 }
+    //             }
+    //         });
 
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    //         Ok(())
+    //     })
+    //     .invoke_handler(tauri::generate_handler![])
+    //     .run(tauri::generate_context!())
+    //     .expect("error while running tauri application");
 }

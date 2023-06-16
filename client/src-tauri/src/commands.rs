@@ -32,9 +32,10 @@ use std::task::{Context, Poll};
 
 // const SOCKET: &str = "als-kou.ddns.net:7878";
 const SOCKET: &str = "127.0.0.1:7878";
-pub static mut STREAM: AsyncMutex<Option<TcpStream>> = AsyncMutex::new(None);
-
-pub static mut PACKAGES: Mutex<(u8, HashMap<u8, Package>)> = Mutex::new((0, HashMap::new()));
+pub static mut STREAM: Option<AsyncMutex<TcpStream>> = None;
+pub static mut PACKAGES: Lazy<Mutex<(u8, HashMap<u8, Package>)>> = Lazy::new(||{
+    Mutex::new((0, HashMap::new()))
+});
 
 struct PackageGet{
     key: u8
@@ -44,13 +45,27 @@ impl Future for PackageGet{
     type Output = Package;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output>{
-        unsafe{
-            if let Some(value) = PACKAGES.lock().unwrap().1.get(&self.key){
-                return Poll::Ready(*value.to_owned());
-            }
+        println!("THE HELL IS WRONG WITH THIS");
+        // unsafe{
+        //     if let Ok(guard) = PACKAGES.try_lock(){
+        //         println!("1");
+        //         if let Some(value) = guard.1.get(&self.key){
+        //             println!("2");
+        //             return Poll::Ready((*value).clone());
+        //         }
+        //     }
 
-            Poll::Pending
-        }
+        //     println!("3");
+        //     cx.waker().wake_by_ref();
+        //     Poll::Pending
+        // }
+
+        cx.waker().wake_by_ref();
+        Poll::Ready(Package{
+            id: 5,
+            payload: String::new(),
+            header: String::new(),
+        })
     }
 }
 
@@ -60,7 +75,8 @@ pub fn unpack(payload: &str, field: &str)-> Value{
 
 pub async fn write_stream(header: String, payload: String)-> Result<u8, Box<dyn Error>>{
     unsafe{
-        if let Some(stream_ref) = &mut *STREAM.lock().await{
+        if let Some(stream_ref) = &mut STREAM{
+            let mut stream_ref = stream_ref.lock().await;
             let mut id_handle = PACKAGES.lock().unwrap();
             let package = Package{
                 id: id_handle.0,
@@ -76,9 +92,7 @@ pub async fn write_stream(header: String, payload: String)-> Result<u8, Box<dyn 
 
             let mut buf = serde_json::to_vec(&package).unwrap();
             buf.push(b'\n');
-            unsafe{
-                stream_ref.write_all(&mut buf).await?;
-            }
+            stream_ref.write_all(&mut buf).await?;
 
             Ok(id_handle.0)
         }
@@ -92,256 +106,256 @@ pub async fn write_stream(header: String, payload: String)-> Result<u8, Box<dyn 
     
 // }
 
+// #[tauri::command]
+// pub async fn change_group(group_title: String, group_colour: String, members_removed: Vec<String>){
+//     let request_id = write_stream(
+//         String::from("EDIT_GROUP"), 
+//         json!({ 
+//             "group_title": group_title, 
+//             "group_colour": group_colour, 
+//             "members_removed": members_removed 
+//     }).to_string()).await.unwrap();
+
+//     let response = PackageGet{ key: request_id }.await;
+    
+//     if response.header == "GOOD"{
+//         println!("CHANGED GROUP");
+//     }
+//     else{
+//         println!("FAILLED CHANGE");
+//     }
+// }
+
+// #[tauri::command]
+// pub async fn remove_group_vocab(vocab_phrase: String, group_title: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         String::from("DELETE_GROUP_VOCAB"), 
+//         json!({ 
+//             "vocab_phrase": vocab_phrase, 
+//             "group_title": group_title 
+//     }).to_string());
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).await.unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED vocab from GROUP");
+//     }
+//     else{
+//         println!("FAILLED remove");
+//     }
+// }
+
+// pub fn remove_group_kanji(kanji_symbol: String, group_title: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("DELETE_GROUP_KANJI"), 
+//             payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED Kanji from GROUP");
+//     }
+//     else{
+//         println!("FAILLED remove");
+//     }
+// }
+
+// pub fn remove_group(group_title: String, group_vocab: bool){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("DELETE_GROUP"), 
+//             payload: json!({ "group_title": group_title, "group_vocab": group_vocab }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED GROUP");
+//     }
+//     else{
+//         println!("FAILLED REMOVE");
+//     }
+// }
+
+// pub fn remove_vocab(vocab_phrase: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("DELETE_VOCAB"), 
+//             payload: json!({ "vocab_phrase": vocab_phrase }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED VOCAB");
+//     }
+//     else{
+//         println!("FAILLED REMOVE");
+//     }
+// }
+
+// pub fn remove_kanji(kanji_symbol: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("DELETE_KANJI"), 
+//             payload: json!({ "kanji_symbol": kanji_symbol }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED KANJI");
+//     }
+//     else{
+//         println!("FAILLED REMOVE");
+//     }
+// }
+
+// pub fn remove_user(){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("DELETE_USER"), 
+//             payload: String::new()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("REMOVED USER");
+//     }
+//     else{
+//         println!("FAILLED REMOVE");
+//     }
+// }
+
+// pub fn add_group_vocab(vocab_phrase: String, group_title: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("CREATE_GROUP_VOCAB"), 
+//             payload: json!({ "vocab_phrase": vocab_phrase, "group_title": group_title }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("ADDED vocab to GROUP");
+//     }
+//     else{
+//         println!("FAILLED ADD");
+//     }
+// }
+
+// pub fn add_group_kanji(kanji_symbol: String, group_title: String){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("CREATE_GROUP_KANJI"), 
+//             payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("ADDED Kanji to GROUP");
+//     }
+//     else{
+//         println!("FAILLED ADD");
+//     }
+// }
+
+// pub fn add_group(group_title: String, group_colour: Option<String>, group_vocab: bool){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("CREATE_GROUP"), 
+//             payload: serde_json::to_string(&NewGroup{
+//                 title: group_title,
+//                 colour: group_colour,
+//                 vocab: group_vocab,
+//                 user_id: 0,
+//             }).unwrap()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("ADDED GROUP");
+//     }
+//     else{
+//         println!("FAILLED ADD");
+//     }
+// }
+
+// pub fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Option<String>>, vocab_description: Option<String>){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("CREATE_VOCAB"), 
+//             payload: serde_json::to_string(&NewVocab{
+//                 phrase: vocab_phrase,
+//                 meaning: vocab_meaning,
+//                 reading: vocab_reading,
+//                 description: vocab_description,
+//                 kanji_refs: Vec::new(),
+//                 user_id: 0,
+//                 group_id: None,
+//             }).unwrap()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("ADDED VOCAB");
+//     }
+//     else{
+//         println!("FAILLED ADD");
+//     }
+// }
+
+// pub fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Option<String>>, kanji_kunyomi: Vec<Option<String>>, kanji_description: Option<String>){
+//     write_stream(&mut *STREAM.lock().unwrap(), 
+//         Package { 
+//             header: String::from("CREATE_KANJI"), 
+//             payload: serde_json::to_string(&NewKanji{
+//                 symbol: kanji_symbol,
+//                 meaning: kanji_meaning,
+//                 onyomi: kanji_onyomi,
+//                 kunyomi: kanji_kunyomi,
+//                 description: kanji_description,
+//                 vocab_refs: Vec::new(),
+//                 user_id: 0,
+//                 group_id: None,
+//             }).unwrap()
+//         }
+//     ).unwrap();
+
+//     let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+    
+//     if response.header == "GOOD"{
+//         println!("ADDED KANJI");
+//     }
+//     else{
+//         println!("FAILLED ADD");
+//     }
+// }
+
 #[tauri::command]
-pub async fn change_group(group_title: String, group_colour: String, members_removed: Vec<String>){
+pub async fn login_user(user_username: String, user_password: String){
     let request_id = write_stream(
-        String::from("EDIT_GROUP"), 
+        String::from("GET_ACCOUNT_KEYS"), 
         json!({ 
-            "group_title": group_title, 
-            "group_colour": group_colour, 
-            "members_removed": members_removed 
+            "user_username": user_username
     }).to_string()).await.unwrap();
 
     let response = PackageGet{ key: request_id }.await;
-    
-    if response.header == "GOOD"{
-        println!("CHANGED GROUP");
-    }
-    else{
-        println!("FAILLED CHANGE");
-    }
-}
-
-#[tauri::command]
-pub async fn remove_group_vocab(vocab_phrase: String, group_title: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        String::from("DELETE_GROUP_VOCAB"), 
-        json!({ 
-            "vocab_phrase": vocab_phrase, 
-            "group_title": group_title 
-    }).to_string());
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).await.unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED vocab from GROUP");
-    }
-    else{
-        println!("FAILLED remove");
-    }
-}
-
-pub fn remove_group_kanji(kanji_symbol: String, group_title: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_GROUP_KANJI"), 
-            payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED Kanji from GROUP");
-    }
-    else{
-        println!("FAILLED remove");
-    }
-}
-
-pub fn remove_group(group_title: String, group_vocab: bool){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_GROUP"), 
-            payload: json!({ "group_title": group_title, "group_vocab": group_vocab }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED GROUP");
-    }
-    else{
-        println!("FAILLED REMOVE");
-    }
-}
-
-pub fn remove_vocab(vocab_phrase: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_VOCAB"), 
-            payload: json!({ "vocab_phrase": vocab_phrase }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED VOCAB");
-    }
-    else{
-        println!("FAILLED REMOVE");
-    }
-}
-
-pub fn remove_kanji(kanji_symbol: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_KANJI"), 
-            payload: json!({ "kanji_symbol": kanji_symbol }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED KANJI");
-    }
-    else{
-        println!("FAILLED REMOVE");
-    }
-}
-
-pub fn remove_user(){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("DELETE_USER"), 
-            payload: String::new()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("REMOVED USER");
-    }
-    else{
-        println!("FAILLED REMOVE");
-    }
-}
-
-pub fn add_group_vocab(vocab_phrase: String, group_title: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("CREATE_GROUP_VOCAB"), 
-            payload: json!({ "vocab_phrase": vocab_phrase, "group_title": group_title }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("ADDED vocab to GROUP");
-    }
-    else{
-        println!("FAILLED ADD");
-    }
-}
-
-pub fn add_group_kanji(kanji_symbol: String, group_title: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("CREATE_GROUP_KANJI"), 
-            payload: json!({ "kanji_symbol": kanji_symbol, "group_title": group_title }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("ADDED Kanji to GROUP");
-    }
-    else{
-        println!("FAILLED ADD");
-    }
-}
-
-pub fn add_group(group_title: String, group_colour: Option<String>, group_vocab: bool){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("CREATE_GROUP"), 
-            payload: serde_json::to_string(&NewGroup{
-                title: group_title,
-                colour: group_colour,
-                vocab: group_vocab,
-                user_id: 0,
-            }).unwrap()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("ADDED GROUP");
-    }
-    else{
-        println!("FAILLED ADD");
-    }
-}
-
-pub fn add_vocab(vocab_phrase: String, vocab_meaning: String, vocab_reading: Vec<Option<String>>, vocab_description: Option<String>){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("CREATE_VOCAB"), 
-            payload: serde_json::to_string(&NewVocab{
-                phrase: vocab_phrase,
-                meaning: vocab_meaning,
-                reading: vocab_reading,
-                description: vocab_description,
-                kanji_refs: Vec::new(),
-                user_id: 0,
-                group_id: None,
-            }).unwrap()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("ADDED VOCAB");
-    }
-    else{
-        println!("FAILLED ADD");
-    }
-}
-
-pub fn add_kanji(kanji_symbol: String, kanji_meaning: String, kanji_onyomi: Vec<Option<String>>, kanji_kunyomi: Vec<Option<String>>, kanji_description: Option<String>){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("CREATE_KANJI"), 
-            payload: serde_json::to_string(&NewKanji{
-                symbol: kanji_symbol,
-                meaning: kanji_meaning,
-                onyomi: kanji_onyomi,
-                kunyomi: kanji_kunyomi,
-                description: kanji_description,
-                vocab_refs: Vec::new(),
-                user_id: 0,
-                group_id: None,
-            }).unwrap()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-    
-    if response.header == "GOOD"{
-        println!("ADDED KANJI");
-    }
-    else{
-        println!("FAILLED ADD");
-    }
-}
-
-pub fn login_user(user_username: String, user_password: String){
-    write_stream(&mut *STREAM.lock().unwrap(), 
-        Package { 
-            header: String::from("GET_ACCOUNT_KEYS"), 
-            payload: json!({ "user_username": user_username }).to_string()
-        }
-    ).unwrap();
-
-    let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
     if response.header == "GOOD"{
         const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
         let n_iter = NonZeroU32::new(100_000).unwrap();
@@ -362,14 +376,14 @@ pub fn login_user(user_username: String, user_password: String){
             &mut pbkdf2_hash,
         );
 
-        write_stream(&mut *STREAM.lock().unwrap(), 
-            Package { 
-                header: String::from("VALIDATE_KEY"), 
-                payload: json!({ "user_username": user_username, "user_hash": pbkdf2_hash.to_vec() }).to_string()
-            }
-        ).unwrap();
+        let request_id = write_stream(
+            String::from("VALIDATE_KEY"), 
+            json!({ 
+                "user_username": user_username,
+                "user_hash": pbkdf2_hash.to_vec()
+        }).to_string()).await.unwrap();
 
-        let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+        let response = PackageGet{ key: request_id }.await;
         if response.header == "GOOD"{
             println!("SIGNED IN");
         }
@@ -382,46 +396,46 @@ pub fn login_user(user_username: String, user_password: String){
     }
 }
 
-pub fn add_user(user_username: String, user_password: (String, String)){
-    if user_password.0 == user_password.1{
-        const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
-        let n_iter = NonZeroU32::new(100_000).unwrap();
-        let rng = rand::SystemRandom::new();
+// pub fn add_user(user_username: String, user_password: (String, String)){
+//     if user_password.0 == user_password.1{
+//         const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
+//         let n_iter = NonZeroU32::new(100_000).unwrap();
+//         let rng = rand::SystemRandom::new();
 
-        let mut salt_key = [0u8; CREDENTIAL_LEN];
-        rng.fill(&mut salt_key).unwrap();
+//         let mut salt_key = [0u8; CREDENTIAL_LEN];
+//         rng.fill(&mut salt_key).unwrap();
 
-        let mut pbkdf2_hash = [0u8; CREDENTIAL_LEN];
-        pbkdf2::derive(
-            pbkdf2::PBKDF2_HMAC_SHA512,
-            n_iter,
-            &salt_key,
-            user_password.0.as_bytes(),
-            &mut pbkdf2_hash,
-        );
+//         let mut pbkdf2_hash = [0u8; CREDENTIAL_LEN];
+//         pbkdf2::derive(
+//             pbkdf2::PBKDF2_HMAC_SHA512,
+//             n_iter,
+//             &salt_key,
+//             user_password.0.as_bytes(),
+//             &mut pbkdf2_hash,
+//         );
         
-        let account = NewUser{ 
-            username: user_username.to_owned(), 
-            hash: pbkdf2_hash.to_vec(), 
-            salt: salt_key.to_vec(),
-        };
+//         let account = NewUser{ 
+//             username: user_username.to_owned(), 
+//             hash: pbkdf2_hash.to_vec(), 
+//             salt: salt_key.to_vec(),
+//         };
 
-        write_stream(&mut *STREAM.lock().unwrap(), 
-            Package { 
-                header: String::from("CREATE_USER"), 
-                payload: serde_json::to_string(&account).unwrap()
-            }
-        ).unwrap();
+//         write_stream(&mut *STREAM.lock().unwrap(), 
+//             Package { 
+//                 header: String::from("CREATE_USER"), 
+//                 payload: serde_json::to_string(&account).unwrap()
+//             }
+//         ).unwrap();
 
-        let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
-        if response.header == "GOOD"{
-            println!("ACCOUNT CREATED");
-        }
-        else{
-            println!("ERROR");
-        }
-    }
-    else{
-        println!("ERROR");
-    }
-}
+//         let response = read_stream(&mut *STREAM.lock().unwrap()).unwrap();
+//         if response.header == "GOOD"{
+//             println!("ACCOUNT CREATED");
+//         }
+//         else{
+//             println!("ERROR");
+//         }
+//     }
+//     else{
+//         println!("ERROR");
+//     }
+// }
